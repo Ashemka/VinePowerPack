@@ -28,8 +28,8 @@
 // @grant        GM_deleteValue
 // @grant        GM_xmlhttpRequest
 // @connect      amazon.fr
-// @updateurl https://raw.githubusercontent.com/Ashemka/VinePowerPack/main/VinePowerPack.js
-// @downloadurl https://raw.githubusercontent.com/Ashemka/VinePowerPack/main/VinePowerPack.js
+// @updateurl https://raw.githubusercontent.com/Ashemka/VinePowerPack/main/VinePowerPack.users.js
+// @downloadurl https://raw.githubusercontent.com/Ashemka/VinePowerPack/main/VinePowerPack.users.js
 // @connect      *
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js
 // ==/UserScript==
