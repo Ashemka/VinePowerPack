@@ -4,27 +4,17 @@
 // @version      4.1.0
 // @description  Fusion : Potluck ASIN + Webhook + Auto-refresh + Échanges/Export PDF  •  +  •  Pro “Vine Reviews” (pending CS, modèles email, harvest, stats, ratio, jours restants, dark) (VPP)
 
-
-/* =========================
- *  ZONES CIBLÉES — AMAZON.FR
- * ========================= */
-
-// --- VINE (catalogue, compte, commandes, reviews)
- // listage items / potluck / encore
 // @match        https://www.amazon.fr/vine/*
 // @match        https://www.amazon.fr/vine/vine-items?*
 // @match        https://www.amazon.fr/vine/orders*
 // @match        https://www.amazon.fr/vine/vine-reviews*
 // @match        https://www.amazon.fr/vine/account*
 
-// --- COMMANDES (toutes variantes historiques/modernes)
- // legacy annulées / historique / vues modernes
 // @match        https://www.amazon.fr/gp/legacy/order-history?orderFilter=cancelled*
 // @match        https://www.amazon.fr/gp/css/order-history?ref_=nav_orders_first
 // @match        https://www.amazon.fr/gp/your-account/order-history/*
 // @match        https://www.amazon.fr/your-orders/orders?*
 
-// --- PROFIL / COMPTE / POST-ACHAT / CRÉATION AVIS
 // @match        https://www.amazon.fr/gp/profile/*
 // @match        https://www.amazon.fr/gp/css/homepage.html?ref_=nav_youraccount_btn
 // @match        https://www.amazon.fr/gp/css/homepage.html?ref_=nav_AccountFlyout_ya
@@ -32,21 +22,11 @@
 // @match        https://www.amazon.fr/review/create-review*
 // @match        https://www.amazon.fr/review/create-review/*
 
-/* =========
- *  MISE À JOUR
- * ========= */
 // @updateurl    https://raw.githubusercontent.com/Ashemka/VinePowerPack/main/VinePowerPack.users.js
 // @downloadurl  https://raw.githubusercontent.com/Ashemka/VinePowerPack/main/VinePowerPack.users.js
 
-/* =========
- *  EXÉCUTION
- * ========= */
 // @run-at       document-idle
 
-/* ======
- * GRANTS
- * ====== */
-// Stockage & options
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_deleteValue
@@ -54,25 +34,18 @@
 // @grant        GM_addValueChangeListener
 // @grant        GM_removeValueChangeListener
 
-// UI & intégration
 // @grant        GM_addStyle
 // @grant        GM_registerMenuCommand
 // @grant        GM_notification
 // @grant        window.close
 
-// Réseau
 // @grant        GM_xmlhttpRequest
 // @connect      amazon.fr
 // @connect      *
 
-/* =======
- * LIBS/CDN
- * ======= */
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js
 
 // ==/UserScript==
-
-
 
 const ENABLE_VPP=!0;(function(){'use strict';const HEXFUSE_VERSION='4.14.0';if(window.__HEX_VINE_FUSION_414__)return;window.__HEX_VINE_FUSION_414__=!0;const usp=new URLSearchParams(location.search);const QUEUE=usp.get('queue');const ALLOWED=new Set(['encore','last_chance','potluck']);if(!ALLOWED.has(QUEUE))return;const $=(sel,root=document)=>root.querySelector(sel);const $$=(sel,root=document)=>Array.from(root.querySelectorAll(sel));const clamp=(n,a,b)=>Math.min(Math.max(n,a),b);const randInt=(mi,ma)=>Math.floor(Math.random()*(ma-mi+1))+mi;const nowMs=()=>Date.now();const parseIntSafe=(v,def=0)=>{const n=parseInt(v,10);return Number.isFinite(n)?n:def};const hmToMin=(s)=>{if(!s||!/:/.test(s))return 0;const[h,m]=s.split(':').map(x=>parseInt(x,10)||0);return h*60+m};const localHMS=()=>{const d=new Date();const h=String(d.getHours()).padStart(2,'0'),m=String(d.getMinutes()).padStart(2,'0'),s=String(d.getSeconds()).padStart(2,'0');return{h,m,s,str:`${h}:${m}:${s}`}};const hashSimple=(obj)=>{try{return btoa(unescape(encodeURIComponent(JSON.stringify(obj)))).slice(0,32)}catch{return String(Math.random()).slice(2)}};const clip=(s,max=80)=>{s=String(s||'');return s.length>max?s.slice(0,max-1)+'…':s};function buildGet(base,params){const u=new URL(base,location.origin);Object.entries(params||{}).forEach(([k,v])=>u.searchParams.append(k,String(v)));return u.toString()}
 let DEBUG=!!GM_getValue('hexfuse.debug',!1);const log=(...a)=>{if(DEBUG)try{console.log('[HexVine]',...a)}catch{}};const warn=(...a)=>{try{console.warn('[HexVine]',...a)}catch{}};const K_SETTINGS='hexfuse.settings.v4.14';const getSettings=()=>GM_getValue(K_SETTINGS,null);const setSettings=(s)=>GM_setValue(K_SETTINGS,s);const kq=(queue,key)=>`hexfuse.${queue}.${key}`;const getLS=(k,d=null)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch{return d}};const setLS=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch{}};const TAB_ID=(function(){try{const k=`hexfuse.tabid.${QUEUE}`;let id=sessionStorage.getItem(k);if(!id){id=`${QUEUE}-${Math.random().toString(36).slice(2,8)}-${Date.now()}`;sessionStorage.setItem(k,id)}
