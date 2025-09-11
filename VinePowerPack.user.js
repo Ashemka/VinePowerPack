@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vine Power Pack by Ashemka
 // @author       Ashemka
-// @version      4.1.2.1
+// @version      4.1.2.2
 // @description  Fusion : Potluck ASIN + Webhook + Auto-refresh + Échanges/Export PDF  •  +  •  Pro “Vine Reviews” (pending CS, modèles email, harvest, stats, ratio, jours restants, dark) (VPP)
 // @match        https://www.amazon.fr/vine/*
 // @match        https://www.amazon.fr/vine/vine-items?*
@@ -35,6 +35,8 @@
 // @connect      amazon.fr
 // @connect      *
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js
+// @require https://cdn.jsdelivr.net/npm/heic2any@0.0.3/dist/heic2any.min.js
+
 // ==/UserScript==
 
 const ENABLE_VPP = !0;
@@ -5377,4 +5379,160 @@ table.vs-table{width:100%;border-collapse:collapse;min-width:760px} table.vs-tab
         alert("Toutes les données ont été effacées.");
         location.reload();
     });
+
+
+// - MULTILOAD PHOTOS - / 
+
+(function enableAmazonMultiUpload() {
+  const ENABLE_HEIC_CONVERT = true; // Mets false pour te passer de heic2any
+  const INPUT_SELECTORS = [
+    'input[data-testid="in-context-ryp__form-field--mediaUploadInputHidden"]',
+    '#media',
+    '#media input[type="file"]'
+  ];
+  const SELECTOR = INPUT_SELECTORS.join(',');
+
+  // Attache quand l'input apparaît
+  const attachWhenReady = () => {
+    const el = document.querySelector(SELECTOR);
+    if (el) {
+      attachMultiUpload(el);
+      obs && obs.disconnect();
+    }
+  };
+
+  const obs = new MutationObserver(attachWhenReady);
+  obs.observe(document.documentElement, { childList: true, subtree: true });
+  attachWhenReady(); // Essai immédiat
+
+  function attachMultiUpload(input) {
+    if (input.dataset.hexMultiUpload) return;
+    input.dataset.hexMultiUpload = '1';
+    try { input.setAttribute('multiple', ''); } catch {}
+    // Filtrage minimal côté UI (ne bloque pas à 100% mais aide un peu)
+    try { input.setAttribute('accept', 'image/jpeg,image/png,video/*'); } catch {}
+
+    let processing = false;
+
+    input.addEventListener('change', async function onChange(e) {
+      if (processing) return;
+      const picked = Array.from(input.files || []);
+      if (!picked.length) return;
+
+      // On prend la main pour gérer la file
+      e.preventDefault();
+      e.stopImmediatePropagation();
+
+      // Optionnel : conversion HEIC si possible
+      const files = await maybeConvertHeicBatch(picked);
+
+      // Overlay simple
+      const overlay = makeOverlay(files.length);
+
+      processing = true;
+      let idx = 0;
+
+      const step = () => {
+        if (idx >= files.length) {
+          processing = false;
+          removeOverlay(overlay);
+          return;
+        }
+        // Injecte UN fichier, déclenche le change pour que l'uploader Amazon prenne le relais
+        const dt = new DataTransfer();
+        dt.items.add(files[idx]);
+        input.files = dt.files;
+        idx++;
+
+        // Mets à jour l’overlay
+        updateOverlay(overlay, idx, files.length);
+
+        // Déclenche le flux natif
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+
+        // Délai aléatoire pour éviter un rythme trop régulier
+        const randomDelay = 1000 + Math.random() * 2000;
+        setTimeout(step, randomDelay);
+      };
+
+      step();
+    }, true);
+
+    // Optionnel : agrandir la zone texte si présente
+    const textarea = document.getElementById('reviewText');
+    if (textarea) {
+      textarea.style.height = '300px';
+      textarea.style.resize = 'both';
+    }
+  }
+
+  function isHeic(file) {
+    return (
+      file &&
+      (file.type === 'image/heic' ||
+       file.type === 'image/heif' ||
+       /\.heic$/i.test(file.name) ||
+       /\.heif$/i.test(file.name))
+    );
+  }
+
+  async function maybeConvertHeicBatch(files) {
+    const out = [];
+    for (const f of files) {
+      if (isHeic(f)) {
+        if (ENABLE_HEIC_CONVERT && typeof window.heic2any === 'function') {
+          try {
+            const blob = await window.heic2any({ blob: f, toType: 'image/jpeg', quality: 0.9 });
+            const newName = f.name.replace(/\.(heic|heif)$/i, '.jpg');
+            out.push(new File([blob], newName, { type: 'image/jpeg' }));
+          } catch (err) {
+            console.warn('[MultiUpload] Conversion HEIC échouée, fichier original conservé:', err);
+            out.push(f);
+          }
+        } else {
+          // Sans heic2any : au choix -> ignorer OU conserver (Amazon risque de refuser)
+          console.warn('[MultiUpload] HEIC détecté sans convertisseur. Pense à activer heic2any ou à filtrer côté prise de vue.');
+          out.push(f);
+        }
+      } else {
+        out.push(f);
+      }
+    }
+    return out;
+  }
+
+  function makeOverlay(total) {
+    const div = document.createElement('div');
+    Object.assign(div.style, {
+      position: 'fixed',
+      bottom: '50%',
+      right: '50%',
+      transform: 'translate(50%, 50%)',
+      background: 'rgba(0,0,0,0.75)',
+      color: '#fff',
+      padding: '12px 16px',
+      zIndex: '999999',
+      borderRadius: '8px',
+      whiteSpace: 'pre-line',
+      fontSize: '13px',
+      lineHeight: '1.3',
+      textAlign: 'center'
+    });
+    div.id = 'hex-upload-progress';
+    div.setAttribute('role', 'status');
+    div.setAttribute('aria-live', 'polite');
+    div.textContent = `Envoi en cours…\n0/${total}`;
+    document.body.appendChild(div);
+    return div;
+  }
+
+  function updateOverlay(div, current, total) {
+    if (div) div.textContent = `Envoi en cours…\n${current}/${total}`;
+  }
+
+  function removeOverlay(div) {
+    if (div && div.parentNode) div.parentNode.removeChild(div);
+  }
+})();
+
 })();
