@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Vine Power Pack by Ashemka
+// @name         test Vine Power Pack by Ashemka
 // @author       Ashemka
-// @version      4.1.1
+// @version      4.1.2
 // @description  Fusion : Potluck ASIN + Webhook + Auto-refresh + Échanges/Export PDF  •  +  •  Pro “Vine Reviews” (pending CS, modèles email, harvest, stats, ratio, jours restants, dark) (VPP)
 
 // @match        https://www.amazon.fr/vine/*
@@ -22,8 +22,8 @@
 // @match        https://www.amazon.fr/review/create-review*
 // @match        https://www.amazon.fr/review/create-review/*
 
-// @updateurl    https://raw.githubusercontent.com/Ashemka/VinePowerPack/main/VinePowerPack.users.js
-// @downloadurl  https://raw.githubusercontent.com/Ashemka/VinePowerPack/main/VinePowerPack.users.js
+// @updateURL   https://raw.githubusercontent.com/Ashemka/VinePowerPack/main/VinePowerPack.user.js
+// @downloadURL https://raw.githubusercontent.com/Ashemka/VinePowerPack/main/VinePowerPack.user.js
 
 // @run-at       document-idle
 
