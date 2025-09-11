@@ -23,7 +23,7 @@
 // @match        https://www.amazon.fr/review/create-review/*
 
 // @updateURL    https://raw.githubusercontent.com/Ashemka/VinePowerPack/main/VinePowerPack.users.js
-// @downloadURL  https://raw.githubusercontent.com/Ashemka/VinePowerPack/main/VinePowerPack.js
+// @downloadURL  https://raw.githubusercontent.com/Ashemka/VinePowerPack/main/VinePowerPack.users.js
 
 // @run-at       document-idle
 
