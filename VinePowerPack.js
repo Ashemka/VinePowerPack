@@ -1385,7 +1385,194 @@ function extractTotalEncore(){
   }
   bootstrap();
 
- })();
+   const phrasesHumoristiques = [
+  // 25 phrases initiales
+  "Notre distributeur automatique d’objets gratuits est en pause café.",
+  "Les offres sont en congés payés aujourd’hui.",
+  "Votre chance est partie faire du tourisme. Elle reviendra bientôt.",
+  "L’algorithme fait la sieste. Ne le réveillez pas, il est grognon.",
+  "Les produits sont trop timides pour sortir aujourd’hui.",
+  "Un dragon a temporairement confisqué vos offres.",
+  "Nos cartons sont coincés dans le trafic intergalactique.",
+  "Un vortex a aspiré vos produits gratuits, désolé.",
+  "Les colis passent un contrôle technique imprévu.",
+  "Les produits disponibles jouent à cache-cache avec vous.",
+  "On est à court d’offres, notre hamster est fatigué.",
+  "Votre profil est tellement premium que même les offres hésitent à se présenter.",
+  "C'est l'heure du goûter pour les produits, revenez plus tard.",
+  "La livraison des cadeaux gratuits a été prise en otage par des lutins malicieux.",
+  "Aujourd’hui, les produits font la queue à la cantine. Patience.",
+  "Les offres sont parties à la plage profiter du soleil.",
+  "On recharge le stock avec du café, revenez bientôt.",
+  "Une licorne a mangé vos colis. Encore.",
+  "La marmotte emballe les produits, mais lentement.",
+  "Votre karma recharge ses batteries, réessayez demain.",
+  "Toutes les bonnes offres sont occupées à écrire leur autobiographie.",
+  "On a envoyé les produits sur Mars par erreur. Oups !",
+  "Nos robots font une pause méditation, revenez zen plus tard.",
+  "Les produits se maquillent pour être plus beaux en photo.",
+  "On attend que Mercure rétrograde pour débloquer les offres.",
+
+  // 25 nouvelles phrases supplémentaires
+  "Les colis sont en atelier peinture pour un relooking.",
+  "Les produits gratuits préparent secrètement une surprise pour demain.",
+  "La brigade anti-morosité inspecte nos colis. Revenez plus tard.",
+  "Un trou noir a temporairement avalé les meilleures offres.",
+  "Les colis sont encore dans leur emballage cadeau, patience !",
+  "Les lutins du marketing cherchent encore l’idée du siècle.",
+  "Nos colis prennent actuellement des selfies pour Instagram.",
+  "Les colis sont partis chasser des papillons, soyez indulgents.",
+  "Les offres jouent à Pokémon GO, elles reviendront après la capture.",
+  "Votre chance a pris une journée sabbatique bien méritée.",
+  "Nos produits sont partis en vacances à Tahiti, les veinards.",
+  "Votre facteur personnel fait actuellement du ski nautique.",
+  "Les colis préparent leur spectacle annuel de magie.",
+  "Un escargot livreur transporte vos colis, soyez patient.",
+  "Les colis lisent actuellement votre profil avec admiration.",
+  "Aujourd’hui, les colis se sont trompés d’étage, attendez-les demain.",
+  "Une panne de réveil empêche nos produits de se présenter aujourd'hui.",
+  "Les produits passent des tests de charisme approfondis.",
+  "Votre livraison est coincée à un feu rouge interminable.",
+  "On peaufine le bronzage de vos colis pour une présentation optimale.",
+  "Les produits négocient actuellement une augmentation salariale.",
+  "Les colis sont en réunion stratégique pour vous épater demain.",
+  "Votre page personnelle est trop brillante : les colis sont éblouis.",
+  "Un chaton mignon a détourné votre colis pour dormir dessus.",
+  "Les colis vérifient leur horoscope avant de sortir.",
+
+  // Blagues stagiaire (20 phrases nouvelles)
+  "Le stagiaire a encore confondu le café avec les offres, désolé.",
+  "Notre stagiaire expérimente le télétravail depuis son lit.",
+  "Le stagiaire a décidé que travailler était une option ce matin.",
+  "Le stagiaire a rangé vos colis dans le micro-ondes. On enquête.",
+  "On cherche le stagiaire depuis 9h. Vu son efficacité, ça change rien.",
+  "Le stagiaire tente actuellement de retrouver son mot de passe (c’est '1234').",
+  "Le stagiaire vous conseille de revenir demain, ou jamais.",
+  "Votre colis a été avalé par la poubelle grâce au stagiaire.",
+  "On envoie le stagiaire chercher vos offres, il revient dans trois ans.",
+  "Notre stagiaire fait des tests sur la gravité avec vos colis.",
+  "Le stagiaire vient de découvrir comment allumer son ordinateur.",
+  "Votre offre est actuellement en train d’être ignorée par le stagiaire.",
+  "Le stagiaire a échangé vos produits contre des tickets-resto.",
+  "Si le stagiaire avait été payé au mérite, il nous devrait de l’argent.",
+  "Le stagiaire prend une pause après chaque clic de souris.",
+  "Notre stagiaire est actuellement bloqué dans l’ascenseur. Tant mieux.",
+  "Vos offres attendent que le stagiaire finisse sa partie de Candy Crush.",
+  "Le stagiaire pensait que ‘offre’ rimait avec ‘coffre’ et les a enterrées.",
+  "Le stagiaire a réussi à perdre les offres qu’il n’avait même pas encore reçues.",
+  "Vos colis sont actuellement victimes de la dernière idée brillante du stagiaire.",
+
+  // Phrases supplémentaires ajoutées
+  "Les offres sont parties faire du yoga en forêt. Sans réseau.",
+  "Le stagiaire a utilisé les colis comme repose-pieds.",
+  "Les produits refusent de coopérer sans café équitable.",
+  "Un bug cosmique a inversé le sens de l’offre. Maintenant, c’est vous qui devez envoyer un colis.",
+  "Le serveur a été remplacé par un grille-pain pour 'économie d’énergie'.",
+  "Les colis sont en train de réviser pour leur bac.",
+  "L'algorithme est tombé amoureux d'une cafetière connectée. Il ne pense plus qu’à elle.",
+  "Nos offres ont été troquées contre un NFT de sandwich.",
+  "Le système a détecté trop de bonne humeur. Rejet des colis pour raison de conformité.",
+  "Le stagiaire a activé le mode « furtif ». Trop bien, ça cache tout.",
+  "Le comité éthique des objets gratuits est en grève.",
+  "Le karma des colis n'était pas aligné. Ils ont été renvoyés en introspection.",
+  "Les offres vous évitent. Elles ont peur de finir testées.",
+  "Le système a confondu votre profil avec celui d’un pigeon. Il cherche encore le GPS.",
+  "Nos produits refusent de sortir sans leur coach motivationnel.",
+  "Les colis se remettent d’un team building émotionnel intense.",
+  "L’algorithme a tout envoyé chez mamie. Par nostalgie.",
+  "Une IA jalouse a supprimé toutes vos offres, juste pour embêter.",
+  "Les colis attendent le bon moment cosmique. Ce n’est pas encore l’heure.",
+  "Le stagiaire a accidentellement lancé le protocole 'Fin du monde'. Tout est en pause.",
+
+  // Autres phrases ajoutées
+  "Les colis suivent une thérapie de groupe pour apprendre à se livrer.",
+  "Les offres sont en quarantaine, elles ont éternué dans l'entrepôt.",
+  "Le stagiaire a tenté de les imprimer. En PDF.",
+  "On attend que Mercure sorte de rétrograde ET que le stagiaire sorte du lit.",
+  "Les produits sont actuellement à la recherche d'eux-mêmes.",
+  "Vos offres ont glissé sous le tapis algorithmique.",
+  "C’est mort. Cordialement."
+];
+
+const messagesStagiaire = [
+  "Désolé, j'avais la flemme. Revenez demain... ou après-demain. Ou pas.",
+  "J’ai lancé une recherche d’offres. J’ai trouvé ma dignité. Résultat : introuvable.",
+  "J’ai cliqué sur « activer les offres », mais le bouton m’a ignoré.",
+  "Je devais traiter vos offres. Puis j’ai vu un pigeon. Bref, j’ai suivi le pigeon.",
+  "Je voulais bosser, mais je me suis souvenu que j’étais stagiaire.",
+  "Les offres sont là. Mais je les ai laissées dans l’autre navigateur.",
+  "Mon ordi a planté. Comme moi, tous les matins.",
+  "J’ai tenté un truc… ça n’a pas marché. Je réessaierai si j’y pense.",
+  "J’étais motivé. Pendant 4 secondes. Puis j’ai ouvert YouTube.",
+  "Je vous aurais bien aidé, mais j’ai un niveau d’autorisation de plante verte.",
+  "J’ai demandé à ChatGPT de faire le boulot. Il a refusé.",
+  "J’ai mis vos offres dans un dossier... que j’ai effacé. Oups.",
+  "Si vous lisez ce message, c’est que j’ai échoué. Encore.",
+  "J’ai mis une alerte pour penser à bosser. Snoozée 42 fois.",
+  "Y avait un choix à faire entre faire mon taf ou nourrir mon tamagotchi. Il est en vie.",
+  "Je vous jure que j’ai failli presque commencer.",
+  "Si j’étais payé au clic, j’aurais toujours pas cliqué.",
+  "Mon café a planté. Du coup moi aussi.",
+  "Vous êtes tombé sur moi. Pas de chance.",
+  "Je me suis dit : \"et si je faisais rien ?\". Et bah voilà.",
+  "Une erreur est survenue. Pas l’erreur système. Moi.",
+  "J’ai rangé les offres par ordre d’apparition dans mes rêves.",
+  "J’ai essayé un nouveau truc. Résultat : le site ne s’en est pas remis.",
+  "J’ai demandé au responsable. Il m’a dit \"hein ?\".",
+  "L’algorithme m’a demandé un conseil. C’est pour ça qu’il bug.",
+  "Les offres sont dans un cloud. Et moi je suis dans les nuages.",
+  "J’ai juré d’essayer. J’ai pas juré de réussir.",
+  "Je vous ai préparé une surprise. C’est l’absence de toute offre.",
+  "Faut pas trop m’en demander. Déjà que je suis là, c’est un miracle.",
+  "Vous avez besoin d’aide ? Moi aussi.",
+  "Le stagiaire a échangé vos produits contre des tickets-resto.",
+  "Je suis parti acheter des offres gratuites avec ma carte bleue personnelle.",
+  "Le stagiaire pensait que ‘offre’ rimait avec ‘coffre’ et les a enterrées.",
+  "Le stagiaire tente actuellement de retrouver son mot de passe (c’est '1234').",
+  "Je vous aurais bien affiché des offres, mais j’ai appuyé sur la mauvaise touche."
+];
+
+
+  function remplacerTexte() {
+        const msgContainer = document.querySelector('.a-section.vvp-no-offers-msg');
+        if (!msgContainer) return;
+
+        const paragraphe = msgContainer.querySelector('p');
+        const ul = msgContainer.querySelector('ul.a-unordered-list.a-vertical');
+        if (!paragraphe || !ul) return;
+
+        ul.innerHTML = '';
+
+        const showStagiaire = Math.random() < 0.4;
+
+        if (showStagiaire) {
+            paragraphe.textContent = "Message du stagiaire :";
+            const li = document.createElement('li');
+            li.className = "a-spacing-mini";
+            const span = document.createElement('span');
+            span.className = "a-list-item";
+            span.textContent = messagesStagiaire[Math.floor(Math.random() * messagesStagiaire.length)];
+            li.appendChild(span);
+            ul.appendChild(li);
+        } else {
+            paragraphe.textContent = "Nous n'avons rien à vous proposer pour l'instant, mais voici pourquoi :";
+            const shuffled = [...phrasesHumoristiques].sort(() => Math.random() - 0.5).slice(0, 4);
+            shuffled.forEach(text => {
+                const li = document.createElement('li');
+                li.className = "a-spacing-mini";
+                const span = document.createElement('span');
+                span.className = "a-list-item";
+                span.textContent = text;
+                li.appendChild(span);
+                ul.appendChild(li);
+            });
+        }
+    }
+
+    window.addEventListener('load', remplacerTexte);
+})();
+
+
 // ——————————————————————————————————————————————————————————
 //  MODULE 2 : Vine Power Pack — v1.9.2 (+ Submit tracking, bouton vert, “Soumis”)
 // ——————————————————————————————————————————————————————————
@@ -3382,4 +3569,6 @@ window.addEventListener('keydown', onKeyDown, { passive: true });
             window.addEventListener("DOMContentLoaded", main, { once: true });
         }
     })(); // END VPP
+
+
 
