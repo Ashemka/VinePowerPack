@@ -3,48 +3,38 @@
 // @author       Ashemka
 // @version      4.1.2.1
 // @description  Fusion : Potluck ASIN + Webhook + Auto-refresh + Échanges/Export PDF  •  +  •  Pro “Vine Reviews” (pending CS, modèles email, harvest, stats, ratio, jours restants, dark) (VPP)
-
 // @match        https://www.amazon.fr/vine/*
 // @match        https://www.amazon.fr/vine/vine-items?*
 // @match        https://www.amazon.fr/vine/orders*
 // @match        https://www.amazon.fr/vine/vine-reviews*
 // @match        https://www.amazon.fr/vine/account*
-
 // @match        https://www.amazon.fr/gp/legacy/order-history?orderFilter=cancelled*
 // @match        https://www.amazon.fr/gp/css/order-history?ref_=nav_orders_first
 // @match        https://www.amazon.fr/gp/your-account/order-history/*
 // @match        https://www.amazon.fr/your-orders/orders?*
-
 // @match        https://www.amazon.fr/gp/profile/*
 // @match        https://www.amazon.fr/gp/css/homepage.html?ref_=nav_youraccount_btn
 // @match        https://www.amazon.fr/gp/css/homepage.html?ref_=nav_AccountFlyout_ya
 // @match        https://www.amazon.fr/gp/buy/thankyou*
 // @match        https://www.amazon.fr/review/create-review*
 // @match        https://www.amazon.fr/review/create-review/*
-
 // @updateURL    https://raw.githubusercontent.com/Ashemka/VinePowerPack/main/VinePowerPack.users.js
 // @downloadURL  https://raw.githubusercontent.com/Ashemka/VinePowerPack/main/VinePowerPack.users.js
-
 // @run-at       document-idle
-
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_deleteValue
 // @grant        GM_listValues
 // @grant        GM_addValueChangeListener
 // @grant        GM_removeValueChangeListener
-
 // @grant        GM_addStyle
 // @grant        GM_registerMenuCommand
 // @grant        GM_notification
 // @grant        window.close
-
 // @grant        GM_xmlhttpRequest
 // @connect      amazon.fr
 // @connect      *
-
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js
-
 // ==/UserScript==
 
 const ENABLE_VPP = !0;
