@@ -18,8 +18,8 @@
 // @match        https://www.amazon.fr/gp/buy/thankyou*
 // @match        https://www.amazon.fr/review/create-review*
 // @match        https://www.amazon.fr/review/create-review/*
-// @updateURL    https://raw.githubusercontent.com/Ashemka/VinePowerPack/main/VinePowerPack.users.js
-// @downloadURL  https://raw.githubusercontent.com/Ashemka/VinePowerPack/main/VinePowerPack.users.js
+// @updateURL    https://raw.githubusercontent.com/Ashemka/VinePowerPack/main/VinePowerPack.user.js
+// @downloadURL  https://raw.githubusercontent.com/Ashemka/VinePowerPack/main/VinePowerPack.user.js
 // @run-at       document-idle
 // @grant        GM_setValue
 // @grant        GM_getValue
