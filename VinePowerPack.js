@@ -1,8 +1,9 @@
 // ==UserScript==
-// @name         NEW Amazon Vine — Full Stack Power Pack (Fusion Ashemka 3.27c + VPP 1.9.2)
-// @version      4.0.0-fusion
-// @description  Fusion : Potluck ASIN + Webhook + Auto-refresh + Échanges/Export PDF (Ashemka)  •  +  •  Pro “Vine Reviews” (pending CS, modèles email, harvest, stats, ratio, jours restants, dark) (VPP)
-// @author       Ashemka + Vine Power Pack (fusion)
+// @name         Vine Power Pack by Ashemka
+// @author       Ashemka
+// @version      4.0.1
+// @description  Fusion : Potluck ASIN + Webhook + Auto-refresh + Échanges/Export PDF  •  +  •  Pro “Vine Reviews” (pending CS, modèles email, harvest, stats, ratio, jours restants, dark) (VPP)
+
 // @match        https://www.amazon.fr/vine/vine-items?*
 // @match        https://www.amazon.fr/vine/*
 // @match        https://www.amazon.fr/vine/vine-reviews*
@@ -16,8 +17,10 @@
 // @match        https://www.amazon.fr/gp/css/homepage.html?ref_=nav_youraccount_btn
 // @match        https://www.amazon.fr/gp/css/homepage.html?ref_=nav_AccountFlyout_ya
 // @match        https://www.amazon.fr/gp/buy/thankyou*
-// @match  https://www.amazon.fr/review/create-review*
-// @match  https://www.amazon.fr/review/create-review/*
+// @match        https://www.amazon.fr/review/create-review*
+// @match        https://www.amazon.fr/review/create-review/*
+// @updateurl    https://raw.githubusercontent.com/Ashemka/VinePowerPack/main/VinePowerPack.users.js
+// @downloadurl  https://raw.githubusercontent.com/Ashemka/VinePowerPack/main/VinePowerPack.users.js
 // @run-at       document-idle
 // @grant        GM_setValue
 // @grant        GM_getValue
@@ -28,8 +31,6 @@
 // @grant        GM_deleteValue
 // @grant        GM_xmlhttpRequest
 // @connect      amazon.fr
-// @updateurl https://raw.githubusercontent.com/Ashemka/VinePowerPack/main/VinePowerPack.users.js
-// @downloadurl https://raw.githubusercontent.com/Ashemka/VinePowerPack/main/VinePowerPack.users.js
 // @connect      *
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js
 // ==/UserScript==
@@ -37,785 +38,1354 @@
 // ——————————————————————————————————————————————————————————
 //  Toggles (si besoin de désactiver un module sans éditer le code)
 // ——————————————————————————————————————————————————————————
-const ENABLE_ASHEMKA = true;
+
 const ENABLE_VPP = true;
 
-// ——————————————————————————————————————————————————————————
-//  MODULE 1 : FULL STACK Ashemka (3.27c compact)
-//  (Léger fix : suppression d’un double-binding des boutons PDF)
-// ——————————————————————————————————————————————————————————
-if (ENABLE_ASHEMKA)
-    (function () {
-        "use strict";
-        const d = document,
-            w = window,
-            byId = (id) => d.getElementById(id),
-            $ = (sel) => d.querySelector(sel),
-            $$ = (sel) => Array.from(d.querySelectorAll(sel));
-        const isPotluckPage = () => {
-            try {
-                const u = new URL(location.href);
-                return u.pathname.includes("/vine/vine-items") && u.searchParams.get("queue") === "potluck";
-            } catch {
-                return !1;
-            }
-        };
-        let darkMode = GM_getValue("darkMode", !1),
-            showClock = GM_getValue("showClock", !0),
-            showRefreshCountdown = GM_getValue("showRefreshCountdown", !0);
-        let clockAutomationActive = GM_getValue("clockAutomationActive", !1),
-            enableAutoRefresh = GM_getValue("enableAutoRefresh", !1),
-            autoLoadPotluck = GM_getValue("autoLoadPotluck", !1);
-        let webhookUrl = GM_getValue("webhookUrl", ""),
-            enableWebhook = GM_getValue("enableWebhook", !0),
-            limitWebhookTrigger = GM_getValue("limitWebhookTrigger", !1),
-            webhookTriggerInterval = GM_getValue("webhookTriggerInterval", 6e5),
-            webhookLastTriggeredKey = "webhookLastTriggeredTime";
-        let refreshSchedules = GM_getValue("refreshSchedules", [
-            { enabled: !1, start: "00:00", end: "04:00", min: 10, max: 40 },
-            { enabled: !1, start: "04:00", end: "06:00", min: 15, max: 45 },
-            { enabled: !1, start: "06:00", end: "12:00", min: 20, max: 59 },
-            { enabled: !1, start: "12:00", end: "18:00", min: 30, max: 59 },
-        ]);
-        const LS = "ashemka.vine.",
-            LS_LAST_VALUE = LS + "lastKnownValue",
-            LS_LAST_VALUE_TIME = LS + "lastKnownValueTime",
-            LS_CHANGE_LOG = LS + "changeLog",
-            LS_LAST_ZERO_TIME = LS + "lastZeroLogTime",
-            LS_LAST_ASINS = LS + "lastASINs",
-            LS_EVER_SEEN = LS + "everSeenASINs",
-            LS_FLAP_TIMES = LS + "asinFlapTimes",
-            LS_AVAIL = "availableProducts",
-            FLAP_TTL_MS = 4e3;
-        let refreshTimeout = null,
-            nextRefreshTime = null;
-        console.info("[Ashemka] Boot", { clockAutomationActive, enableAutoRefresh, showClock, showRefreshCountdown });
+(function(){
+  'use strict';
+  // --- Single-instance guard par version ---
+  const HEXFUSE_VERSION = '4.14.0';
+  if (window.__HEX_VINE_FUSION_414__) return; window.__HEX_VINE_FUSION_414__=true;
 
-        GM_addStyle(`:root{--as-accent:#17a2b8;--as-green:#2e7d32;--as-red:#c62828;--as-border:3px;--as-z:2147483647}
-.ashemka-container{position:fixed;top:10px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:10px;z-index:var(--as-z)}
-.ashemka-icon-wrap{display:flex;gap:10px}
-.ashemka-icon{width:48px;height:48px;display:flex;align-items:center;justify-content:center;font-size:22px;cursor:pointer;user-select:none;border:var(--as-border) solid var(--as-green);border-radius:10px;backdrop-filter:saturate(1.2) blur(4px);background:rgba(255,255,255,.6);box-shadow:0 2px 10px rgba(0,0,0,.15)}
-.ashemka-icon.active{border-color:var(--as-red)}
-.ashemka-tooltip{position:absolute;display:none;z-index:var(--as-z);background:#111;color:#fff;padding:6px 8px;border-radius:8px;font-size:12px;box-shadow:0 4px 18px rgba(0,0,0,.3)}
-.ashemka-chip{height:48px;min-width:120px;padding:0 12px;display:flex;align-items:center;justify-content:center;border:var(--as-border) solid #ddd;border-radius:10px;background:#000;color:#fff;font-weight:700;letter-spacing:.5px;box-shadow:0 2px 10px rgba(0,0,0,.15)}
-.ashemka-countdown{display:none}
-.ashemka-modal{position:fixed;inset:0;display:none;place-items:center;z-index:var(--as-z);background:rgba(0,0,0,.35)}
-.ashemka-panel{width:min(980px,96vw);max-height:88vh;display:flex;flex-direction:column;border-radius:16px;overflow:hidden;background:rgba(255,255,255,.88);backdrop-filter:saturate(1.1) blur(10px);box-shadow:0 20px 60px rgba(0,0,0,.35);color:#111}
-.ashemka-header{padding:14px 18px;display:flex;align-items:center;justify-content:space-between;background:linear-gradient(135deg, rgba(23,162,184,.15), rgba(0,0,0,0));border-bottom:1px solid rgba(0,0,0,.06)}
-.ashemka-body{padding:16px 18px;display:grid;gap:14px;overflow:auto}
-.as-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.as-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-.as-card{padding:12px;border:1px solid rgba(0,0,0,.08);border-radius:12px;background:rgba(255,255,255,.95)}
-.as-label{font-weight:600;font-size:13px;opacity:.9}
-.as-note{font-size:12px;opacity:.7}
-.as-input,.as-select{min-height:36px;border:1px solid #ccc;border-radius:10px;padding:6px 10px;width:100%;background:#fff;color:#111}
-.as-toggle{transform:scale(1.1)}
-.as-footer{padding:12px 18px;display:flex;gap:10px;justify-content:flex-end;border-top:1px solid rgba(0,0,0,.06);background:rgba(255,255,255,.75)}
-.as-btn{padding:10px 14px;border:none;border-radius:10px;cursor:pointer;font-weight:600;box-shadow:0 2px 10px rgba(0,0,0,.12)}
-.as-btn.save{background:var(--as-green);color:#fff}.as-btn.close{background:var(--as-red);color:#fff}.as-btn.ghost{background:var(--as-accent);color:#fff}
-.as-sched-header{display:flex;align-items:center;justify-content:space-between;gap:10px}
-.as-sched-body{display:none;gap:8px}.as-sched-body.open{display:grid;gap:10px}
-.as-sched-row{display:grid;align-items:center;gap:8px;grid-template-columns:auto auto 140px auto 140px auto 100px auto 100px}
-.as-input.time{max-width:140px}.as-input.mins{max-width:100px}
-.as-accord-body{display:none}.as-accord-body.open{display:block}
-.as-list{margin-top:10px}.as-list-item{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 10px;border:1px solid rgba(0,0,0,.08);border-radius:10px;background:rgba(255,255,255,.9)}.as-list-item+.as-list-item{margin-top:8px}
-.as-list-item a{color:inherit;text-decoration:none}.as-list-item a:hover{color:#007bff}
-.ashemka-panel.as-dark{background:rgba(20,20,22,.95);color:#e9e9e9}
-.as-dark .ashemka-header{background:linear-gradient(135deg, rgba(23,162,184,.2), rgba(0,0,0,0));border-bottom-color:#2b2f36}
-.as-dark .as-card{background:#1d1f23;border-color:#2b2f36}
-.as-dark .as-label{color:#e9e9e9;opacity:.95}.as-dark .as-note{color:#b6beca;opacity:.95}
-.as-dark .as-input,.as-dark .as-select{background:#101214;color:#e9e9e9;border-color:#3a3f46}
-.as-dark .as-btn{box-shadow:0 2px 10px rgba(0,0,0,.4)}.as-dark .as-btn.ghost{background:#1b6d79;color:#fff}.as-dark .as-btn.save{background:#2e7d32}.as-dark .as-btn.close{background:#c62828}
-.as-dark .as-list-item{background:#171a1e;border-color:#2b2f36}`);
+  /* ───────────────────────── PAGE / QUEUE ───────────────────────── */
+  const usp = new URLSearchParams(location.search);
+  const QUEUE = usp.get('queue'); // encore | last_chance | potluck
+  const ALLOWED = new Set(['encore','last_chance','potluck']);
+  if (!ALLOWED.has(QUEUE)) return;
 
-        // helpers
-        const getLS = (k, f = null) => {
-                try {
-                    const v = localStorage.getItem(k);
-                    return v ? JSON.parse(v) : f;
-                } catch {
-                    return f;
-                }
-            },
-            setLS = (k, v) => localStorage.setItem(k, JSON.stringify(v));
-        function tip(t) {
-            const e = d.createElement("div");
-            e.className = "ashemka-tooltip";
-            e.textContent = t;
-            d.body.appendChild(e);
-            return e;
-        }
-        function icon(lbl, tt, on) {
-            const el = d.createElement("div");
-            el.className = "ashemka-icon";
-            el.textContent = lbl;
-            el.addEventListener("click", on);
-            const t = tip(tt);
-            el.addEventListener("mouseenter", () => {
-                const r = el.getBoundingClientRect();
-                t.style.left = `${r.left + scrollX}px`;
-                t.style.top = `${r.bottom + 6 + scrollY}px`;
-                t.style.display = "block";
-            });
-            el.addEventListener("mouseleave", () => (t.style.display = "none"));
-            return el;
-        }
-        function purgeKnownASINs({ alsoResetSnapshot = !1 } = {}) {
-            setLS(LS_EVER_SEEN, []);
-            if (alsoResetSnapshot) setLS(LS_LAST_ASINS, []);
-            console.info("[Ashemka] Purge: everSeen" + (alsoResetSnapshot ? " + snapshot" : ""));
-            GM_notification && GM_notification({ title: "Ashemka", text: `ASIN connus purgés${alsoResetSnapshot ? " + snapshot" : ""}.`, timeout: 4e3 });
-        }
+  /* ───────────────────────── UTILITAIRES ───────────────────────── */
+  const $  = (sel,root=document)=>root.querySelector(sel);
+  const $$ = (sel,root=document)=>Array.from(root.querySelectorAll(sel));
+  const clamp=(n,a,b)=>Math.min(Math.max(n,a),b);
+  const randInt=(mi,ma)=>Math.floor(Math.random()*(ma-mi+1))+mi;
+  const nowMs=()=>Date.now();
+  const parseIntSafe=(v,def=0)=>{ const n=parseInt(v,10); return Number.isFinite(n)?n:def; };
+  const hmToMin=(s)=>{ if(!s||!/:/.test(s)) return 0; const [h,m]=s.split(':').map(x=>parseInt(x,10)||0); return h*60+m; };
+  const localHMS=()=>{ const d=new Date(); const h=String(d.getHours()).padStart(2,'0'), m=String(d.getMinutes()).padStart(2,'0'), s=String(d.getSeconds()).padStart(2,'0'); return {h,m,s,str:`${h}:${m}:${s}`}; };
+  const hashSimple=(obj)=>{ try{ return btoa(unescape(encodeURIComponent(JSON.stringify(obj)))).slice(0,32);}catch{ return String(Math.random()).slice(2);} };
+  const clip=(s,max=80)=>{ s=String(s||''); return s.length>max ? s.slice(0,max-1)+'…' : s; };
 
-        // top bar
-        const container = d.createElement("div");
-        container.className = "ashemka-container";
-        const clockBox = d.createElement("div");
-        clockBox.className = "ashemka-chip";
-        clockBox.title = "Horloge";
-        const icons = d.createElement("div");
-        icons.className = "ashemka-icon-wrap";
-        const countdown = d.createElement("div");
-        countdown.className = "ashemka-chip ashemka-countdown";
-        container.append(clockBox, icons, countdown);
-        d.body.appendChild(container);
+  // GET builder centralisé
+  function buildGet(base, params){
+    const u=new URL(base, location.origin);
+    Object.entries(params||{}).forEach(([k,v])=>u.searchParams.append(k, String(v)));
+    return u.toString();
+  }
 
-        // modal
-        const modal = d.createElement("div");
-        modal.className = "ashemka-modal";
-        modal.innerHTML = `
-<div class="ashemka-panel">
-  <div class="ashemka-header"><div style="font-weight:800;">Paramètres Ashemka</div><div class="as-note" id="lastValueDisplay"></div></div>
-  <div class="ashemka-body">
-    <div class="as-grid-2">
-      <div class="as-card">
-        <div class="as-row" style="justify-content:space-between;"><span class="as-label">Webhook</span><span class="as-note">POST JSON à chaque changement</span></div>
-        <div class="as-row"><label><input type="checkbox" id="cb_webhook" class="as-toggle"> Activer</label><label><input type="checkbox" id="cb_webhook_limit" class="as-toggle"> Limiter fréquence</label><input id="in_webhook_iv" class="as-input" type="number" min="1" style="max-width:120px"></div>
-        <div class="as-row"><input id="in_webhook_url" class="as-input" type="text" placeholder="https://..."></div>
-        <div class="as-row"><button id="btn_webhook_test" class="as-btn ghost">Tester Webhook</button><button id="btn_webhook_clear" class="as-btn ghost" style="background:#607d8b;">Effacer URL</button></div>
+  // Logs contrôlables (option stockée)
+  let DEBUG = !!GM_getValue('hexfuse.debug', false);
+  const log = (...a)=>{ if(DEBUG) try{ console.log('[HexVine]',...a);}catch{} };
+  const warn = (...a)=>{ try{ console.warn('[HexVine]',...a);}catch{} };
+
+  /* ───────────────────────── STOCKAGE ───────────────────────── */
+  const K_SETTINGS='hexfuse.settings.v4.14';
+  const getSettings=()=>GM_getValue(K_SETTINGS,null);
+  const setSettings=(s)=>GM_setValue(K_SETTINGS,s);
+  const kq=(queue,key)=>`hexfuse.${queue}.${key}`;
+  const getLS=(k,d=null)=>{ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):d; }catch{ return d; } };
+  const setLS=(k,v)=>{ try{ localStorage.setItem(k, JSON.stringify(v)); }catch{} };
+
+  // par onglet
+  const TAB_ID = (function(){
+    try{ const k=`hexfuse.tabid.${QUEUE}`; let id=sessionStorage.getItem(k);
+      if(!id){ id = `${QUEUE}-${Math.random().toString(36).slice(2,8)}-${Date.now()}`; sessionStorage.setItem(k,id); }
+      return id;
+    }catch{ return `${QUEUE}-single`; }
+  })();
+  const kt=(key)=>`hexfuse.tab.${TAB_ID}.${key}`;
+  const ssGet=(k,d=null)=>{ try{ const v=sessionStorage.getItem(k); return v!=null?JSON.parse(v):d; }catch{ return d; } };
+  const ssSet=(k,v)=>{ try{ sessionStorage.setItem(k, JSON.stringify(v)); }catch{} };
+
+  /* ────────────────────── DEFAULTS & MIGRATION ───────────────────── */
+  const DEF_SCHEDULES = [
+    { enabled:false, start:'00:00', end:'06:00', minMin:10, maxMin:30 },
+    { enabled:false, start:'06:00', end:'12:00', minMin:15, maxMin:40 },
+    { enabled:false, start:'12:00', end:'18:00', minMin:20, maxMin:45 },
+    { enabled:false, start:'18:00', end:'23:59', minMin:15, maxMin:40 },
+  ];
+  const DEFAULTS = {
+    theme:'system',
+    accent:'bleu',
+    showClock:true,
+    showCountdown:true,
+    minuteGate:true, // Reco horaire (global ON/OFF)
+    defaultLanding:'potluck',
+    queues:{
+      potluck:{  mode:'diff',  useSchedules:true, minSec:30, maxSec:120, super:{enabled:true,durationSec:300,minSec:2,maxSec:10}, schedules:JSON.parse(JSON.stringify(DEF_SCHEDULES)), webhook:{url:'',mode:'json',cooldownSec:2,threshold:1} },
+      'last_chance':{ mode:'diff',  useSchedules:true, minSec:30, maxSec:120, super:{enabled:true,durationSec:300,minSec:2,maxSec:10}, schedules:JSON.parse(JSON.stringify(DEF_SCHEDULES)), webhook:{url:'',mode:'json',cooldownSec:2,threshold:1} },
+      encore:{   mode:'delta', useSchedules:true, minSec:30, maxSec:120, super:{enabled:true,durationSec:300,minSec:2,maxSec:10}, schedules:JSON.parse(JSON.stringify(DEF_SCHEDULES)), webhook:{url:'',mode:'get', cooldownSec:2,threshold:1} },
+    },
+    diff:{ flapTTLms:4000 },
+    folds:{},
+    history:{ enableReappear:true, groupView:false, showImages:true, maxEvents:400, maxProducts:400, filterType:'all', search:'' },
+    ui:{ activePane:'pane-pot' }, // onglet actif persistant
+    meta:{ version: HEXFUSE_VERSION, schema: 2 }
+  };
+  let settings = getSettings() || DEFAULTS;
+
+  // Migration minimale (ex: webhooks legacy)
+  ['potluck','last_chance','encore'].forEach(q=>{
+    const ref=DEFAULTS.queues[q]; const cur=settings.queues?.[q]||{};
+    if(cur.webhooks){ const {diffPost,deltaGet,cooldownSec,threshold}=cur.webhooks;
+      cur.webhook = cur.webhook || { url: diffPost||deltaGet||'', mode: diffPost?'json':deltaGet?'get':'json', cooldownSec: cooldownSec??2, threshold: threshold??1 };
+      delete cur.webhooks;
+    }
+    if(cur.useSchedules==null) cur.useSchedules=true;
+    if(!cur.schedules) cur.schedules = JSON.parse(JSON.stringify(ref.schedules));
+    if(!cur.webhook)   cur.webhook   = JSON.parse(JSON.stringify(ref.webhook));
+    settings.queues[q]=cur;
+  });
+  settings.history = Object.assign({}, DEFAULTS.history, settings.history||{});
+  settings.folds   = Object.assign({}, DEFAULTS.folds,   settings.folds||{});
+  settings.ui      = Object.assign({}, DEFAULTS.ui,      settings.ui||{});
+  if(!settings.accent) settings.accent='bleu';
+  if(!settings.defaultLanding) settings.defaultLanding='potluck';
+  settings.meta = Object.assign({}, DEFAULTS.meta, settings.meta||{});
+  setSettings(settings);
+
+  /* ───────────────────────── THEME ───────────────────────── */
+  const ACCENTS = {
+    bleu:{accent:'#60a5fa',strong:'#3b82f6',grad:'linear-gradient(135deg,#60a5fa,#7c3aed)'},
+    indigo:{accent:'#818cf8',strong:'#6366f1',grad:'linear-gradient(135deg,#818cf8,#22d3ee)'},
+    cyan:{accent:'#22d3ee',strong:'#06b6d4',grad:'linear-gradient(135deg,#22d3ee,#3b82f6)'},
+    ciel:{accent:'#7dd3fc',strong:'#38bdf8',grad:'linear-gradient(135deg,#7dd3fc,#3b82f6)'},
+    sarcelle:{accent:'#2dd4bf',strong:'#14b8a6',grad:'linear-gradient(135deg,#2dd4bf,#60a5fa)'},
+    vert:{accent:'#34d399',strong:'#10b981',grad:'linear-gradient(135deg,#34d399,#0ea5e9)'},
+    emeraude:{accent:'#6ee7b7',strong:'#10b981',grad:'linear-gradient(135deg,#6ee7b7,#16a34a)'},
+    citron:{accent:'#a3e635',strong:'#84cc16',grad:'linear-gradient(135deg,#a3e635,#10b981)'},
+    ambre:{accent:'#fbbf24',strong:'#f59e0b',grad:'linear-gradient(135deg,#fbbf24,#ef4444)'},
+    orange:{accent:'#fb923c',strong:'#f97316',grad:'linear-gradient(135deg,#fb923c,#ef4444)'},
+    rouge:{accent:'#f87171',strong:'#ef4444',grad:'linear-gradient(135deg,#f87171,#fb923c)'},
+    rose:{accent:'#f472b6',strong:'#ec4899',grad:'linear-gradient(135deg,#f472b6,#8b5cf6)'},
+    fuchsia:{accent:'#e879f9',strong:'#d946ef',grad:'linear-gradient(135deg,#e879f9,#8b5cf6)'},
+    violet:{accent:'#a78bfa',strong:'#7c3aed',grad:'linear-gradient(135deg,#a78bfa,#3b82f6)'},
+    pourpre:{accent:'#c4b5fd',strong:'#8b5cf6',grad:'linear-gradient(135deg,#c4b5fd,#6366f1)'},
+    neutre:{accent:'#cbd5e1',strong:'#94a3b8',grad:'linear-gradient(135deg,#cbd5e1,#64748b)'},
+  };
+  const THEMES={
+    clair:{fg:'#0f172a',bg:'rgba(255,255,255,.96)',muted:'#475569',border:'rgba(0,0,0,.08)',inputBg:'#ffffff',inputBorder:'#e5e7eb',inputFg:'#0f172a',scheme:'light'},
+    sombre:{fg:'#f8fafc',bg:'rgba(17,24,39,.92)',muted:'#cbd5e1',border:'rgba(255,255,255,.06)',inputBg:'#0b1220',inputBorder:'#263241',inputFg:'#f8fafc',scheme:'dark'},
+    gris:{fg:'#f8fafc',bg:'rgba(31,41,55,.92)',muted:'#cbd5e1',border:'rgba(255,255,255,.06)',inputBg:'#111827',inputBorder:'#263241',inputFg:'#f8fafc',scheme:'dark'},
+    system:'system'
+  };
+  const prefersDark=()=>window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  function applyTheme(){
+    const themeName = settings.theme==='system' ? (prefersDark()?'sombre':'clair') : settings.theme;
+    const t = themeName==='system' ? THEMES[ prefersDark()?'sombre':'clair' ] : (THEMES[themeName] || THEMES.sombre);
+    const a = ACCENTS[settings.accent] || ACCENTS.bleu;
+    GM_addStyle(`
+      :root{
+        --hx-fg:${t.fg};--hx-bg:${t.bg};--hx-muted:${t.muted};--hx-border:${t.border};
+        --hx-input-bg:${t.inputBg};--hx-input-fg:${t.inputFg};--hx-input-border:${t.inputBorder};
+        --hx-accent:${a.accent};--hx-strong:${a.strong};--hx-grad:${a.grad};
+        --hx-good:#10b981;--hx-bad:#ef4444;--hx-shadow:0 14px 36px rgba(0,0,0,.35)
+      }
+      .hx-card,.hx-modal{ color-scheme:${t.scheme}; }
+      .hx-input::placeholder{ color: var(--hx-muted); opacity:.8 }
+      input[type="time"].hx-input::-webkit-datetime-edit{ color:var(--hx-input-fg) }
+      input[type="time"].hx-input::-webkit-calendar-picker-indicator{ filter: invert(1) }
+    `);
+  }
+  applyTheme();
+
+  /* ───────────────────────── CSS ───────────────────────── */
+  GM_addStyle(`
+    .hx-card{position:fixed;z-index:2147483640;top:20px;right:20px;background:var(--hx-bg);color:var(--hx-fg);backdrop-filter:saturate(1.05) blur(6px);-webkit-backdrop-filter:saturate(1.05) blur(6px);border-radius:16px;box-shadow:var(--hx-shadow);border:1px solid var(--hx-border);min-width:320px;max-width:420px;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial}
+    .hx-head{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:var(--hx-grad);color:#fff;border-radius:16px 16px 0 0;user-select:none}
+    .hx-left{display:flex;align-items:center;gap:8px}
+    .hx-right{display:flex;align-items:center;gap:6px}
+    .hx-qshort{padding:2px 6px;border-radius:999px;font-weight:900;font-size:10px;color:#fff;border:1px solid rgba(255,255,255,.25)}
+    .hx-q-rec{background:#10b981;border-color:#10b981}
+    .hx-q-tous{background:#ef4444;border-color:#ef4444}
+    .hx-q-enc{background:#f59e0b;border-color:#f59e0b}
+    .hx-pills{display:flex;gap:6px;align-items:center}
+    .hx-pill{padding:2px 6px;border-radius:999px;font-weight:800;font-size:10px;letter-spacing:.3px;border:1px solid rgba(255,255,255,.35);background:#0000;color:#fff}
+    .hx-pill-auto.on{border-color:var(--hx-good)}
+    .hx-pill-auto.off{border-color:var(--hx-bad)}
+    .hx-pill-turbo{border-color:#2CD7E6;color:#2CD7E6}
+    .hx-clock{font-weight:800;letter-spacing:.3px;border:1px solid rgba(255,255,255,.25);border-radius:8px;padding:2px 8px;background:rgba(0,0,0,.2);display:none}
+    .hx-ic{width:34px;height:34px;border-radius:10px;border:2px solid #94a3b8;background:#0000;color:#fff;font-size:16px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+    .hx-ic.on{border-color:var(--hx-good);box-shadow:0 0 0 2px rgba(16,185,129,.15) inset}
+    .hx-ic.off{border-color:#ef4444;box-shadow:0 0 0 2px rgba(239,68,68,.12) inset}
+
+    .hx-body{padding:12px 14px 6px}
+    .hx-row{display:flex;align-items:center;justify-content:space-between;margin:6px 0}
+    .hx-label{font-size:12px;color:var(--hx-muted)} .hx-val{font-size:20px;font-weight:900;letter-spacing:.3px}
+    .hx-delta{font-weight:900} .hx-pos{color:var(--hx-good)} .hx-neg{color:var(--hx-bad)} .hx-zero{color:var(--hx-muted)}
+    .hx-btns{display:flex;gap:10px;padding:8px 14px 12px;flex-wrap:wrap}
+    .hx-btn{border:none;border-radius:12px;padding:8px 12px;font-weight:800;font-size:12px;color:#fff;cursor:pointer}
+    .hx-prim{background:var(--hx-strong)} .hx-goodbtn{background:#10b981} .hx-badbtn{background:#ef4444} .hx-super{background:#2CD7E6;color:#062a2f}
+    .hx-note{font-size:12px;color:var(--hx-muted);padding:0 14px 12px}
+
+    /* Modale */
+    .hx-modal-back{position:fixed;inset:0;background:rgba(0,0,0,.45);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);z-index:1000000;display:none}
+    .hx-modal{position:fixed;z-index:1000001;top:50%;left:50%;transform:translate(-50%,-50%);width:min(880px,calc(100vw - 28px));height:min(84vh,820px);display:none;background:var(--hx-bg);color:var(--hx-fg);border:1px solid var(--hx-border);border-radius:16px;box-shadow:var(--hx-shadow)}
+    .hx-mhead{padding:12px 14px;background:var(--hx-grad);color:#fff;font-weight:800;border-radius:16px 16px 0 0}
+    .hx-mbody{padding:14px;height:calc(100% - 54px);overflow:auto}
+    .hx-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;position:sticky;top:0;background:var(--hx-bg);padding-bottom:8px;z-index:2}
+    .hx-tab{border:1px solid var(--hx-border);background:#0000;color:var(--hx-fg);padding:8px 10px;border-radius:10px;cursor:pointer;font-weight:700;font-size:12px}
+    .hx-tab.active{background:var(--hx-strong);color:#fff;border-color:var(--hx-strong)}
+    .hx-pane{display:none} .hx-pane.active{display:block}
+    .hx-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px 14px}
+    .hx-full{grid-column:1/-1}
+    .hx-lab2{font-size:12px;color:var(--hx-muted);margin:0 0 4px;display:block}
+    .hx-h1{font-size:14px;font-weight:900;margin:14px 0 6px}
+    .hx-hr{height:1px;background:var(--hx-border);margin:10px 0}
+    .hx-coll{border:1px solid var(--hx-border);border-radius:12px;overflow:hidden;margin:8px 0}
+    .hx-coll-h{background:rgba(0,0,0,.05);padding:10px 12px;cursor:pointer;font-weight:800;display:flex;align-items:center;justify-content:space-between}
+    .hx-coll-b{padding:12px;display:none}
+    .hx-coll.open .hx-coll-b{display:block}
+    .hx-input,.hx-select{width:100%;padding:10px 12px;border-radius:12px;border:1px solid var(--hx-input-border)!important;background-color:var(--hx-input-bg)!important;color:var(--hx-input-fg)!important;outline:none;appearance:none;line-height:1.3;height:40px}
+    select.hx-select{ background-image:none }
+    .hx-actions{display:flex;justify-content:space-between;gap:10px;margin-top:12px}
+
+    /* Historique REC */
+    .hx-hlist{max-height:520px;overflow:auto;border:1px solid var(--hx-border);border-radius:12px;padding:8px}
+    .hx-hitem{display:grid;grid-template-columns:48px 1fr;gap:10px;align-items:center;border-bottom:1px dashed var(--hx-border);padding:8px 4px}
+    .hx-hitem:last-child{border-bottom:none}
+    .hx-thumb{width:48px;height:48px;border-radius:8px;border:1px solid var(--hx-border);background:#0000;object-fit:cover;cursor:pointer}
+    .hx-meta{display:flex;flex-direction:column;gap:4px}
+    .hx-line{display:flex;align-items:center;justify-content:space-between;gap:10px}
+    .hx-titlelink{font-weight:800;text-decoration:none;color:var(--hx-fg)}
+    .hx-titlelink:hover{text-decoration:underline}
+    .hx-sub{font-size:12px;color:var(--hx-muted);display:flex;gap:8px;flex-wrap:wrap}
+    .hx-badge{font-size:10px;font-weight:900;padding:2px 6px;border-radius:999px;border:1px solid var(--hx-border);background:#0000}
+    .hx-b-first{border-color:var(--hx-good);color:var(--hx-good)}
+    .hx-b-re{border-color:#22d3ee;color:#22d3ee}
+    .hx-b-day{border-color:#94a3b8;color:#94a3b8}
+    .hx-asin{font-family:ui-monospace, SFMono-Regular, Menlo, monospace;font-size:11px;opacity:.85}
+    .hx-controls{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 10px}
+    .hx-btn-chip{border:none;border-radius:10px;padding:8px 10px;font-weight:800;font-size:12px;color:#fff;cursor:pointer}
+    .hx-btn-blue{background:#3b82f6}.hx-btn-amber{background:#f59e0b}.hx-btn-red{background:#ef4444}.hx-btn-gray{background:#64748b}
+
+    /* Lightbox image */
+    .hx-ov{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:2147483646}
+    .hx-ov img{max-width:60vw;max-height:80vh;border-radius:12px;border:1px solid #1f2937;background:#fff}
+  `);
+
+  /* ───────────────────────── Libellés ───────────────────────── */
+  const QLABEL_FR = {encore:'Autres articles', last_chance:'Dispo pour tous', potluck:'Recommandations'};
+  const QSHORT    = {encore:'ENC', last_chance:'TOUS', potluck:'REC'};
+  const QCLS      = {encore:'hx-q-enc', last_chance:'hx-q-tous', potluck:'hx-q-rec'};
+
+  /* ───────────────────────── Carte flottante ───────────────────────── */
+  const card=document.createElement('div');
+  card.className='hx-card';
+  card.innerHTML=`
+    <div class="hx-head" id="hx-drag">
+      <div class="hx-left">
+        <span class="hx-qshort ${QCLS[QUEUE]}">${QSHORT[QUEUE]||QUEUE}</span>
       </div>
-      <div class="as-card"><div class="as-label">Affichage</div>
-        <div class="as-row"><label><input type="checkbox" id="cb_clock" class="as-toggle"> Horloge</label><label><input type="checkbox" id="cb_countdown" class="as-toggle"> Décompte rafraîch.</label><label><input type="checkbox" id="cb_dark" class="as-toggle"> Mode sombre (modale)</label></div>
+      <div class="hx-right">
+        <div class="hx-pills">
+          <span id="hx-pill-auto" class="hx-pill hx-pill-auto off">AUTO OFF</span>
+          <span id="hx-pill-turbo" class="hx-pill hx-pill-turbo" style="display:none;">TURBO</span>
+        </div>
+        <span id="hx-hclock" class="hx-clock">--:--:--</span>
+        <button id="hx-ic-gate"  class="hx-ic off" title="Reco horaire">⏰</button>
+        <button id="hx-ic-sched" class="hx-ic off" title="Plages horaires">🗓️</button>
+        <button id="hx-ic-opt"   class="hx-ic"      title="Options">⚙️</button>
       </div>
     </div>
-    <div class="as-card">
-      <div class="as-label">Données Potluck</div>
-      <div class="as-row"><button id="btn_purge_everseen" class="as-btn close" style="background:#e53935;">Purger ASIN connus</button><button id="btn_purge_everseen_snapshot" class="as-btn" style="background:#8e24aa;color:#fff;">Purger ASIN + snapshot</button></div>
-      <div class="as-note">“Purger ASIN connus” vide seulement la mémoire des ASIN déjà vus (brand_new réévalué).<br>“+ snapshot” force le prochain scan à marquer tous les ASIN affichés comme “added”.</div>
+    <div class="hx-body" aria-live="polite">
+      <div class="hx-row"><div class="hx-label">Statut</div><div id="hx-status" class="hx-label">En veille…</div></div>
+      <div class="hx-row"><div class="hx-label">Total détecté</div><div id="hx-total" class="hx-val">—</div></div>
+      <div class="hx-row"><div class="hx-label">Variation</div><div id="hx-delta" class="hx-delta hx-zero">0</div></div>
+      <div class="hx-row"><div class="hx-label">Prochain refresh</div><div id="hx-count" class="hx-val" style="font-size:16px;">—</div></div>
     </div>
-    <div class="as-card">
-      <div class="as-sched-header"><div class="as-label">Échanges (Produits disponibles)</div><button id="btn_avail_toggle" class="as-btn ghost" style="padding:6px 10px;">Afficher</button></div>
-      <div class="as-accord-body" id="avail_body">
-        <div class="as-row" style="margin:8px 0 4px 0;"><button id="btn_export_pdf" class="as-btn ghost">Exporter PDF</button><button id="btn_clear_avail" class="as-btn close" style="background:#e53935;">Effacer données</button></div>
-        <div id="avail_list" class="as-list"></div>
-        <div class="as-note" style="margin-top:6px;">La liste “Disponible” est stockée localement. Sur la page Orders, les lignes marquées sont surlignées en vert.</div>
+    <div class="hx-btns">
+      <button id="hx-toggle" class="hx-btn hx-goodbtn">▶️ Activer</button>
+      <button id="hx-super"  class="hx-btn hx-super">🚀 Turbo</button>
+      <button id="hx-now"    class="hx-btn hx-prim" title="Rafraîchir immédiatement">↻ Maintenant</button>
+    </div>
+    <div id="hx-note" class="hx-note"></div>
+  `;
+  document.documentElement.appendChild(card);
+
+  // Drag + persistance position
+  (function(){ const drag=$('#hx-drag'); let sx=0,sy=0,sl=0,st=0,dragging=false;
+    const saved=ssGet(kt('pos'),null); if(saved){ card.style.left=`${saved.x}px`; card.style.top=`${saved.y}px`; card.style.right='auto'; }
+    drag.addEventListener('mousedown',e=>{ if(e.target.closest('.hx-right')) return; dragging=true; sx=e.clientX; sy=e.clientY; const r=card.getBoundingClientRect(); sl=r.left; st=r.top; e.preventDefault(); });
+    document.addEventListener('mousemove',e=>{ if(!dragging) return; const nl=Math.max(0,sl+(e.clientX-sx)); const nt=Math.max(0,st+(e.clientY-sy)); card.style.left=`${nl}px`; card.style.top=`${nt}px`; card.style.right='auto'; });
+    document.addEventListener('mouseup',()=>{ if(!dragging) return; dragging=false; const r=card.getBoundingClientRect(); ssSet(kt('pos'),{x:Math.round(r.left),y:Math.round(r.top)}); });
+  })();
+
+  /* ───────────────────────── Horloge ───────────────────────── */
+  function applyClockVisibility(){ $('#hx-hclock').style.display = settings.showClock ? 'inline-block' : 'none'; }
+  function tickClock(){ if(!settings.showClock) return; $('#hx-hclock').textContent = localHMS().str; }
+  setInterval(tickClock,1000); tickClock(); applyClockVisibility();
+
+  /* ───────────────────────── Parsers ───────────────────────── */
+  function extractASINs(){
+    const grid = $('#vvp-items-grid'); if(!grid) return [];
+    // ignorer placeholders
+    const items = $$('.vvp-item-tile', grid).filter(el=> !el.matches('.skeleton,.placeholder'));
+    const res=[];
+    for(const el of items){
+      let a=null;
+      const A = el.querySelector('a[href*="/dp/"]');
+      if(A){ const h=A.getAttribute('href')||A.href||''; const m=h.match(/\/dp\/([A-Z0-9]{10})/i); if(m) a=m[1].toUpperCase(); }
+      if(!a){ const d=el.querySelector('[data-asin]'); const attr=d?.getAttribute('data-asin'); if(attr && /^[A-Z0-9]{10}$/i.test(attr)) a=attr.toUpperCase(); }
+      if(!a){ const txt = el.textContent||''; const m2 = txt.match(/\b(B0[0-9A-Z]{8})\b/i); if(m2) a=m2[1].toUpperCase(); }
+      if(a) res.push(a);
+    }
+    return Array.from(new Set(res));
+  }
+
+// Remplace TOUTE la fonction extractTotalEncore() par celle-ci
+function extractTotalEncore(){
+  const root = document.querySelector('#vvp-items-grid-container') || document.body;
+
+  const textToInt = (s)=>{
+    const v = parseInt(String(s||'').replace(/[^0-9]/g,''), 10);
+    return Number.isFinite(v) ? v : null;
+  };
+
+  // 1) Sélecteurs directs courants (selon versions d’UI Amazon)
+  const directSel = [
+    'h1 .a-color-state',
+    '.a-section .a-spacing-top-small',
+    '.s-result-info-bar .a-text-bold'
+  ];
+  for (const sel of directSel){
+    const el = root.querySelector(sel);
+    if(!el) continue;
+
+    // a) Phrase “sur/of … résultats/results”
+    const m = (el.textContent||'').match(/(?:sur|of)\s+([\d\s\u00A0\u202F.,]+)\s+(?:r[ée]sultats|results)/i);
+    if(m && m[1]){ const v = textToInt(m[1]); if(v!=null) return v; }
+
+    // b) Deux <strong> : le dernier est le total
+    const strongs = el.querySelectorAll('strong');
+    if(strongs.length >= 2){
+      const v = textToInt(strongs[strongs.length-1].textContent);
+      if(v!=null) return v;
+    }
+
+    // c) Dernier “nombre” trouvé dans le texte
+    const nums = (el.textContent||'').match(/\d[\d\s\u00A0\u202F.,]*/g) || [];
+    if(nums.length){
+      const v = textToInt(nums[nums.length-1]);
+      if(v!=null) return v;
+    }
+  }
+
+  // 2) Recherche large de la phrase dans des <p>/<div>/<span>/<h1>
+  const candidates = Array.from(root.querySelectorAll('p,div,span,h1')).filter(node=>{
+    const t = (node.textContent||'').toLowerCase();
+    return (t.includes('affichage de') || t.includes('showing')) &&
+           (t.includes(' sur ') || t.includes(' of ')) &&
+           (t.includes('résultats') || t.includes('results'));
+  });
+
+  for (const el of candidates){
+    // a) Deux <strong> → dernier = total
+    const strongs = el.querySelectorAll('strong');
+    if(strongs.length >= 2){
+      const v = textToInt(strongs[strongs.length-1].textContent);
+      if(v!=null) return v;
+    }
+    // b) Regex directe
+    const m = (el.textContent||'').match(/(?:sur|of)\s+([\d\s\u00A0\u202F.,]+)\s+(?:r[ée]sultats|results)/i);
+    if(m && m[1]){ const v = textToInt(m[1]); if(v!=null) return v; }
+  }
+
+  // 3) Dernier recours : parser tout le container
+  const mAll = (root.textContent||'').match(/(?:sur|of)\s+([\d\s\u00A0\u202F.,]+)\s+(?:r[ée]sultats|results)/i);
+  if(mAll && mAll[1]){ const v = textToInt(mAll[1]); if(v!=null) return v; }
+
+  // 4) Fallback : compter les tuiles visibles
+  return extractASINs().length;
+}
+
+  /* ───────────────────────── DIFF ENGINE ───────────────────────── */
+  const FLAP_TTL=settings.diff.flapTTLms;
+  const K_LAST_ASINS=kq(QUEUE,'lastAsins');
+  const K_EVERSEEN =kq(QUEUE,'everSeen');
+  const K_FLAPTS   =kq(QUEUE,'flapTimes');
+  function diffAsins(cur){
+    const prev=getLS(K_LAST_ASINS,[])||[];
+    const S=new Set(cur), P=new Set(prev);
+    const added=cur.filter(a=>!P.has(a));
+    const removed=prev.filter(a=>!S.has(a));
+    const ever=new Set(getLS(K_EVERSEEN,[])||[]);
+    const brandNew=added.filter(a=>!ever.has(a));
+    const reappeared=added.filter(a=>ever.has(a));
+    const now=nowMs(); const flap=getLS(K_FLAPTS,{})||{};
+    const allow=(a)=>{ const t=flap[a]?new Date(flap[a]).getTime():0; return now-t>=FLAP_TTL; };
+    const bn=brandNew.filter(allow), rp=reappeared.filter(allow), rm=removed.filter(allow);
+    [...bn,...rp,...rm].forEach(a=>flap[a]=new Date(now).toISOString());
+    setLS(K_FLAPTS,flap); setLS(K_LAST_ASINS,cur); setLS(K_EVERSEEN, Array.from(new Set([...ever, ...cur])));
+    return {prevCount:prev.length, curCount:cur.length, brandNew:bn, reappeared:rp, removedFlap:rm};
+  }
+
+  /* ───────────────────────── Webhooks ───────────────────────── */
+  async function httpGET(url){
+    if(!url) return false;
+    try{
+      if(typeof GM_xmlhttpRequest==='function'){
+        return await new Promise(res=>{
+          GM_xmlhttpRequest({method:'GET', url, onload:()=>res(true), onerror:()=>res(false), ontimeout:()=>res(false)});
+        });
+      } else { await fetch(url,{method:'GET',mode:'no-cors'}); return true; }
+    }catch{ return false; }
+  }
+  async function httpPOST(url, data, extraHeaders){
+    if(!url) return false; const body=JSON.stringify(data);
+    const headers = Object.assign({'Content-Type':'application/json'}, extraHeaders||{});
+    try{
+      if(typeof GM_xmlhttpRequest==='function'){
+        return await new Promise(res=>{
+          GM_xmlhttpRequest({method:'POST', url, headers, data:body, onload:()=>res(true), onerror:()=>res(false), ontimeout:()=>res(false)});
+        });
+      } else { await fetch(url,{method:'POST', headers, body}); return true; }
+    }catch{ return false; }
+  }
+  function cooled(kind, cooldownSec){
+    const key=kq(QUEUE,`cool.${kind}.ts`); const last=GM_getValue(key,0);
+    const ok = nowMs()-last >= Math.max(2000,(cooldownSec||0)*1000);
+    if(ok) GM_setValue(key, nowMs());
+    return ok;
+  }
+  function dedup(kind, fp, ttlMs=10000){
+    const key=kq(QUEUE,`dedup.${kind}`); const last=GM_getValue(key,null);
+    if(last && last.fp===fp && nowMs()-last.ts<ttlMs) return false;
+    GM_setValue(key,{fp,ts:nowMs()}); return true;
+  }
+
+  // Signature “soft” (facultative) pour POST JSON
+  function softHmac(str){ try{ return btoa(unescape(encodeURIComponent(str))).slice(0,44);}catch{ return String(Math.random()).slice(2); } }
+  function signHeaders(payload){
+    const secret = GM_getValue('hexfuse.webhook_secret',''); // (optionnel) à définir via console/clé partagée
+    if(!secret) return {};
+    const body = JSON.stringify(payload);
+    return {'X-Hex-Signature': softHmac(secret+body)};
+  }
+
+  // Circuit breaker simple pour éviter spam en cas d’échecs répétés
+  async function withCircuit(kind, fn){
+    const k = kq(QUEUE,`cb.${kind}`);
+    const st = GM_getValue(k,{fail:0,until:0});
+    if(nowMs() < st.until) return false; // ouvert: on coupe
+    const ok = await fn();
+    if(ok){ GM_setValue(k,{fail:0,until:0}); }
+    else{
+      const fail = (st.fail||0)+1;
+      const backoff = Math.min(60000, 2000 * Math.pow(2, fail-1)); // max 60s
+      GM_setValue(k,{fail,until: nowMs()+backoff});
+    }
+    return ok;
+  }
+
+  /* ───────────────────────── Scheduler ───────────────────────── */
+  const QT = settings.queues[QUEUE];
+  const KT_AUTO=kt('auto'), KT_SUPER=kt('super'), KT_SUPER_END=kt('superEnd');
+  let refreshTimer=null, countTimer=null, nextAt=0;
+
+  function isAutoOn(){ return !!ssGet(KT_AUTO,false); }
+  function setAuto(on){ ssSet(KT_AUTO,!!on); updateUIStates(); scheduleNext(); }
+  function isSuperOn(){ return !!ssGet(KT_SUPER,false) && nowMs()<(ssGet(KT_SUPER_END,0)||0); }
+  function startSuper(){ if(!isAutoOn()){ setStatus('Activez l’auto pour Turbo'); return; } ssSet(KT_SUPER,true); ssSet(KT_SUPER_END, nowMs()+QT.super.durationSec*1000); updateUIStates(); scheduleNext(); }
+  function stopSuper(){ ssSet(KT_SUPER,false); ssSet(KT_SUPER_END,0); updateUIStates(); scheduleNext(); }
+
+  // ⏰ Reco horaire (indépendant)
+  let gateActive = ssGet(kt('gateActive'), true);
+
+  // 🗓️ Plages : fonctionnent même si “Activer” est OFF
+  let useSchedules = !!QT.useSchedules;
+
+  // Support des plages “wrap minuit”
+  function isInRange(cur, a, b){
+    return a<=b ? (cur>=a && cur<b) : (cur>=a || cur<b);
+  }
+  function activeSchedule(){
+    if(!useSchedules) return null;
+    const t=localHMS(); const cur=hmToMin(`${t.h}:${t.m}`);
+    for(const s of QT.schedules){
+      if(!s.enabled) continue;
+      const a=hmToMin(s.start), b=hmToMin(s.end);
+      if(isInRange(cur,a,b)) return s;
+    }
+    return null;
+  }
+  function nextActiveWindow(){
+    if(!useSchedules) return null;
+    const t=localHMS(); const cur=hmToMin(`${t.h}:${t.m}`);
+    const list = QT.schedules.filter(s=>s.enabled).map(s=>({s, a:hmToMin(s.start), b:hmToMin(s.end)}));
+    // on récupère la “prochaine” (naïf)
+    const ahead = list.filter(x=> !isInRange(cur,x.a,x.b) && (x.a!==cur));
+    ahead.sort((x,y)=>x.a-y.a);
+    return ahead[0]?.s || null;
+  }
+
+  function pickDelaySec(){
+    if(isSuperOn()){
+      const mi=clamp(QT.super.minSec,1,60), ma=clamp(QT.super.maxSec,1,60);
+      return randInt(Math.min(mi,ma), Math.max(mi,ma));
+    }
+    const sch=activeSchedule();
+    if(sch){
+      const mi=clamp(sch.minMin,1,60)*60, ma=clamp(sch.maxMin,1,60)*60;
+      return randInt(Math.min(mi,ma), Math.max(mi,ma));
+    }
+    const mi=clamp(QT.minSec,5,1800), ma=clamp(QT.maxSec,5,1800);
+    return randInt(Math.min(mi,ma), Math.max(mi,ma));
+  }
+  function niceTime(ms){ if(ms<0) ms=0; const s=Math.floor(ms/1000); if(s<60) return `${s}s`; const m=Math.floor(s/60),r=s%60; if(m<60) return `${m}m ${r}s`; const h=Math.floor(m/60),mr=m%60; return `${h}h ${mr}m`; }
+
+  function scheduleNext(){
+    clearTimeout(refreshTimer); clearInterval(countTimer);
+    const schNow = activeSchedule();
+    const shouldPlan = isAutoOn() || isSuperOn() || (!!schNow);
+    if(!shouldPlan){ $('#hx-count').textContent='—'; updateNote(); return; }
+
+    const delay=pickDelaySec();
+    const jitter = randInt(0, 800); // éviter synchronisation
+    nextAt=nowMs()+delay*1000 + jitter;
+
+    countTimer=setInterval(()=>{ const left=nextAt-nowMs(); if(settings.showCountdown) $('#hx-count').textContent= left>0? niceTime(left) : '—'; else $('#hx-count').textContent='—'; }, 250);
+    refreshTimer=setTimeout(()=>{ setStatus('↻ Rafraîchissement…'); safeReload(); }, delay*1000 + jitter);
+    updateNote();
+  }
+
+  // Anti-boucle reload (prudence)
+  function tooManyReloads(){
+    try{
+      const navs = performance.getEntriesByType('navigation');
+      const reloads = navs.filter(n=>n.type==='reload').length;
+      return reloads>3;
+    }catch{ return false; }
+  }
+  function safeReload(){
+    if(tooManyReloads()){ clearTimeout(refreshTimer); clearInterval(countTimer); setStatus('Reload freiné (sécurité)'); return; }
+    try{ location.reload(); }catch{}
+  }
+
+  // ⏰ anti-double-reload Reco horaire + jitter optionnel
+  let lastGateReload=0;
+  setInterval(()=>{
+    if(!(settings.minuteGate && gateActive)) return;
+    const t=localHMS();
+    const now = nowMs();
+    if(now - lastGateReload < 20000) return; // anti-spam 20s
+    if ((t.m==='59' && parseInt(t.s,10)>=55) || (t.m==='00' && t.s==='00')) {
+      lastGateReload = now + randInt(0, 1500); // petit jitter optionnel
+      setStatus('Reco horaire → reload');
+      safeReload();
+    }
+  },1000);
+
+  // Pause/reprise selon onglet masqué & offline/online
+  document.addEventListener('visibilitychange', ()=>{
+    if(document.hidden){ clearTimeout(refreshTimer); clearInterval(countTimer); setStatus('En pause (onglet masqué)'); }
+    else { scheduleNext(); setStatus('Reprise'); }
+  });
+  window.addEventListener('offline', ()=>{ clearTimeout(refreshTimer); clearInterval(countTimer); setStatus('Hors-ligne'); });
+  window.addEventListener('online',  ()=>{ scheduleNext(); setStatus('En ligne'); });
+
+  /* ───────────────────────── Observer ───────────────────────── */
+  let obsDeb=null;
+  function setupObserver(){
+    const c = $('#vvp-items-grid-container') || document.body;
+    const deb=()=>{ clearTimeout(obsDeb); obsDeb=setTimeout(onScan,150); };
+    const mo=new MutationObserver((mlist)=>{
+      // ignorer mutations triviales (texte sans ajout/suppression de nœuds)
+      if(!mlist.some(m=> m.addedNodes.length || m.removedNodes.length)) return;
+      deb();
+    });
+    mo.observe(c,{childList:true,subtree:true,characterData:true});
+    deb();
+  }
+
+  /* ───────────────────────── UI STATES ───────────────────────── */
+  function setStatus(s){ $('#hx-status').textContent=s; }
+  function updatePills(){
+    const pA=$('#hx-pill-auto'); pA.textContent = isAutoOn()?'AUTO ON':'AUTO OFF';
+    pA.classList.toggle('on', isAutoOn()); pA.classList.toggle('off', !isAutoOn());
+    const pT=$('#hx-pill-turbo'); const onT=isSuperOn(); pT.style.display = onT?'inline-block':'none';
+  }
+  function updateHeaderIcons(){
+    const bGate=$('#hx-ic-gate'); bGate.classList.toggle('on', settings.minuteGate && gateActive); bGate.classList.toggle('off', !(settings.minuteGate && gateActive));
+    const bSch=$('#hx-ic-sched'); bSch.classList.toggle('on', useSchedules); bSch.classList.toggle('off', !useSchedules);
+  }
+  function updateMainButtons(){
+    const on=isAutoOn(); const b=$('#hx-toggle');
+    b.textContent = on ? '⏸️ Désactiver' : '▶️ Activer';
+    b.classList.toggle('hx-goodbtn', !on); b.classList.toggle('hx-badbtn', on);
+    $('#hx-super').textContent = isSuperOn()? '🛑 Stop Turbo' : '🚀 Turbo';
+  }
+  function updateNote(){
+    const s = settings.queues[QUEUE];
+    const statuses = [
+      `Auto ${isAutoOn()?'ON':'OFF'}`,
+      `Plages ${useSchedules?'ON':'OFF'}`,
+      `Reco horaire ${(settings.minuteGate&&gateActive)?'ON':'OFF'}`,
+      ...(isSuperOn()? ['Turbo ON'] : [])
+    ];
+    const sch = activeSchedule();
+    const params = sch ? [`${sch.start}-${sch.end}`, `${clamp(sch.minMin,1,60)}-${clamp(sch.maxMin,1,60)} min`] : [`${s.minSec}-${s.maxSec}s`];
+    if(s.webhook?.cooldownSec) params.push(`cooldown ${s.webhook.cooldownSec}s`);
+    const up = nextActiveWindow(); if(up) params.push(`prochaine ${up.start}-${up.end}`);
+    $('#hx-note').textContent = statuses.join(' • ') + ' — ' + params.join(' • ');
+  }
+  function updateUIStates(){ updatePills(); updateHeaderIcons(); updateMainButtons(); updateNote(); applyClockVisibility(); }
+
+  // Bouton refresh immédiat
+  $('#hx-now').addEventListener('click', ()=>{ setStatus('↻ Refresh manuel'); safeReload(); });
+
+  /* ───────────────────────── HISTORIQUE REC (POTLUCK) ───────────────────────── */
+  const K_H_PROD   = 'hexfuse.potluck.hist.products.v2';
+  const K_H_EVENTS = 'hexfuse.potluck.hist.events.v2';
+  const KT_H_PREV  = kt('hist.prev');
+  const REAPPEAR_COOLDOWN_MS = 5*60*1000; // 5 minutes (anti-bruit)
+
+  const h_getProdMap = ()=>{ try{ const o=GM_getValue(K_H_PROD,{}); return (o&&typeof o==='object')?o:{}; }catch{return{}} };
+  const h_setProdMap = (m)=>{ try{ GM_setValue(K_H_PROD, m&&typeof m==='object'?m:{}); }catch{} };
+  const h_getEvents  = ()=>{ try{ const a=GM_getValue(K_H_EVENTS,[]); return Array.isArray(a)?a:[]; }catch{return[]} };
+  const h_setEvents  = (a)=>{ try{ GM_setValue(K_H_EVENTS, Array.isArray(a)?a:[]); }catch{} };
+  const h_prevGet = ()=>{ try{ const v=sessionStorage.getItem(KT_H_PREV); return v?JSON.parse(v):[]; }catch{return[]} };
+  const h_prevSet = (arr)=>{ try{ sessionStorage.setItem(KT_H_PREV, JSON.stringify(Array.from(new Set(arr||[])))); }catch{} };
+
+  function h_dayShort(d){ return ['dim','lun','mar','mer','jeu','ven','sam'][d.getDay()] }
+  function h_fmtTime(iso){ try{ const d=new Date(iso); const H=String(d.getHours()).padStart(2,'0'), M=String(d.getMinutes()).padStart(2,'0'), S=String(d.getSeconds()).padStart(2,'0'); return `${h_dayShort(d)} ${H}:${M}:${S}`; }catch{return '—'} }
+
+  function h_findTileData(asin){
+    const grid = document.querySelector('#vvp-items-grid');
+    let name='', img='', price='';
+    let url = `https://www.amazon.fr/dp/${asin}`;
+    if(!grid) return {name:'(Nom indisponible)', url, img:'', price:''};
+    const tiles = Array.from(grid.querySelectorAll('.vvp-item-tile'));
+    for(const el of tiles){
+      const a=el.querySelector('a[href*="/dp/"]'); if(!a) continue;
+      const href=a.getAttribute('href')||a.href||'';
+      if(!href.toUpperCase().includes(`/DP/${asin}`)) continue;
+      url = href.startsWith('http') ? href : new URL(href, location.origin).toString();
+      name=(a.textContent||'').trim();
+      if(!name){
+        const t=el.querySelector('h2, h3, .a-size-base-plus, .a-size-base, .a-color-base, .a-text-normal');
+        name=(t?.textContent||'').trim();
+      }
+      name = name || '(Nom indisponible)';
+      const im=el.querySelector('img'); if(im){
+        img = im.getAttribute('src') || im.getAttribute('data-src') || '';
+        if(!img){ const ss = im.getAttribute('srcset') || ''; const first = ss.split(',')[0]?.trim()?.split(' ')[0]; if(first) img = first; }
+        if(img && !/^https?:/i.test(img)){ try{ img=new URL(img, location.origin).toString(); }catch{} }
+      }
+      const p = el.querySelector('.a-price .a-offscreen, .a-price .a-price-whole, .a-color-price, .a-price');
+      if(p){ price=(p.textContent||'').replace(/\s+/g,' ').trim(); }
+      break;
+    }
+    return {name, url, img:img||'', price:price||''};
+  }
+
+  function h_recordPotluck(asins){
+    if(!Array.isArray(asins) || !asins.length) return;
+    const prev    = new Set(h_prevGet());
+    const cur     = new Set(asins);
+    const added   = asins.filter(a=>!prev.has(a)); // nouveaux à ce scan
+    const prodMap = h_getProdMap();
+    const events  = h_getEvents();
+    const nowISO  = new Date().toISOString();
+    const nowT    = Date.now();
+
+    for(const asin of added){
+      const known = !!prodMap[asin];
+      const info  = h_findTileData(asin);
+
+      if(!known){
+        prodMap[asin] = { asin, name:info.name, url:info.url, img:info.img, price:info.price, first_ts:nowISO, last_ts:nowISO, sightings:1 };
+        events.unshift({ asin, type:'first', ts:nowISO, name:info.name, url:info.url, img:info.img, price:info.price });
+      }else{
+        const lastT = prodMap[asin].last_ts ? new Date(prodMap[asin].last_ts).getTime() : 0;
+        prodMap[asin].last_ts = nowISO;
+        prodMap[asin].sightings = (prodMap[asin].sightings||1)+1;
+        if(settings.history.enableReappear && (!lastT || (nowT-lastT)>=REAPPEAR_COOLDOWN_MS)){
+          events.unshift({ asin, type:'reappear', ts:nowISO, name:info.name||prodMap[asin].name, url:info.url||prodMap[asin].url, img:info.img||prodMap[asin].img, price:info.price||prodMap[asin].price });
+        }
+      }
+    }
+
+    // bornes
+    const pKeys=Object.keys(prodMap);
+    if(pKeys.length > settings.history.maxProducts){
+      pKeys.sort((a,b)=> (new Date(prodMap[b].last_ts)-new Date(prodMap[a].last_ts)));
+      const keep = new Set(pKeys.slice(0, settings.history.maxProducts));
+      for(const k of pKeys){ if(!keep.has(k)) delete prodMap[k]; }
+    }
+    if(events.length > settings.history.maxEvents) events.length = settings.history.maxEvents;
+
+    h_setProdMap(prodMap);
+    h_setEvents(events);
+    h_prevSet(Array.from(cur));
+  }
+
+  /* ───────────────────────── SCAN & ALERT ───────────────────────── */
+  async function onScan(){
+    const _histAsins = (QUEUE==='potluck') ? extractASINs() : null;
+
+    let total, delta=0;
+    if (QT.mode==='diff'){
+      const asins=extractASINs();
+      const d=diffAsins(asins);
+      total=d.curCount; delta=total - d.prevCount;
+      $('#hx-total').textContent=String(total); renderDelta(delta);
+      setStatus(isAutoOn()? 'Observation active' : 'Observation (auto OFF)');
+
+      const hasSig = d.brandNew.length||d.reappeared.length||d.removedFlap.length;
+      const url=QT.webhook.url;
+      if(hasSig && url && cooled('diff', QT.webhook.cooldownSec)){
+        const payload={ event:'update', queue:QUEUE, page:location.href, tz:Intl.DateTimeFormat().resolvedOptions().timeZone, timestamp:new Date().toISOString(), total, diff:delta, brand_new_asins:d.brandNew, reappeared_asins:d.reappeared, removed_asins:d.removedFlap };
+        const fp = hashSimple(payload);
+        if(dedup('diff',fp,12000)){
+          await withCircuit('diff', async ()=>{
+            if(QT.webhook.mode==='json'){ return httpPOST(url, payload, signHeaders(payload)); }
+            else {
+              const u=buildGet(url, {event:'update', queue:QUEUE, total:String(total), diff:String(delta), bn:d.brandNew.join(','), rp:d.reappeared.join(','), rm:d.removedFlap.join(','), tz:Intl.DateTimeFormat().resolvedOptions().timeZone, ts:new Date().toISOString(), page:location.href});
+              return httpGET(u);
+            }
+          });
+          setStatus('Alerte envoyée');
+        }
+      }
+    } else {
+      total = extractTotalEncore();
+      const last=ssGet(kt('lastSeen'), null);
+      delta = last==null ? 0 : total - Number(last);
+      $('#hx-total').textContent=String(total); renderDelta(delta);
+      setStatus(isAutoOn()? 'Observation active' : 'Observation (auto OFF)');
+
+      const thr=QT.webhook.threshold||1; const url=QT.webhook.url;
+      if((isAutoOn() || activeSchedule()) && last!=null && delta>=thr && url && cooled('delta', QT.webhook.cooldownSec)){
+        const payload={event:'update', queue:QUEUE, page:location.href, tz:Intl.DateTimeFormat().resolvedOptions().timeZone, timestamp:new Date().toISOString(), total, diff:delta};
+        const fp=`${QUEUE}:${total}`;
+        if(dedup('delta',fp,8000)){
+          await withCircuit('delta', async ()=>{
+            if(QT.webhook.mode==='json'){ return httpPOST(url, payload, signHeaders(payload)); }
+            else {
+              const u=buildGet(url, {event:'update', queue:QUEUE, total:String(total), diff:String(delta), tz:Intl.DateTimeFormat().resolvedOptions().timeZone, ts:new Date().toISOString(), page:location.href});
+              return httpGET(u);
+            }
+          });
+          setStatus('Alerte envoyée');
+        }
+      }
+      ssSet(kt('lastSeen'), total);
+      ssSet(kt('lastSeenAt'), nowMs());
+    }
+
+    if (QUEUE==='potluck' && _histAsins) h_recordPotluck(_histAsins);
+    updateNote();
+  }
+  function renderDelta(delta){
+    const el=$('#hx-delta'); el.classList.remove('hx-pos','hx-neg','hx-zero');
+    if(delta>0){ el.classList.add('hx-pos'); el.textContent = `+${delta}`; }
+    else if(delta<0){ el.classList.add('hx-neg'); el.textContent = `${delta}`; }
+    else{ el.classList.add('hx-zero'); el.textContent='0'; }
+  }
+
+  /* ───────────────────────── MODALE: structure ───────────────────────── */
+  const back=document.createElement('div'); back.className='hx-modal-back';
+  const modal=document.createElement('div'); modal.className='hx-modal';
+  modal.setAttribute('role','dialog'); modal.setAttribute('aria-modal','true');
+  modal.innerHTML=`
+    <div class="hx-mhead">Options</div>
+    <div class="hx-mbody">
+      <div class="hx-tabs">
+        <button class="hx-tab" data-pane="pane-pot">Recommandations</button>
+        <button class="hx-tab" data-pane="pane-lc">Dispo pour tous</button>
+        <button class="hx-tab" data-pane="pane-enc">Autres articles</button>
+        <button class="hx-tab" data-pane="pane-hist">Historique REC</button>
+        <button class="hx-tab" data-pane="pane-ui">Options</button>
+        <button class="hx-tab" data-pane="pane-help">Aide</button>
       </div>
-    </div>
-    <div class="as-card">
-      <div class="as-sched-header"><div class="as-label">Plages de rafraîchissement (Potluck)</div><button id="btn_sched_toggle" class="as-btn ghost" style="padding:6px 10px;">Afficher</button></div>
-      <div class="as-sched-body" id="sched_body"></div><div class="as-note" style="margin-top:6px;">Heures HH:MM ; Min/Max en minutes. Intervalle tiré dans [min,max].</div>
-    </div>
-  </div>
-  <div class="as-footer"><button id="btn_save" class="as-btn save">Enregistrer</button><button id="btn_close" class="as-btn close">Fermer</button></div>
-</div>`;
-        d.body.appendChild(modal);
+      <div id="pane-pot"  class="hx-pane"></div>
+      <div id="pane-lc"   class="hx-pane"></div>
+      <div id="pane-enc"  class="hx-pane"></div>
+      <div id="pane-hist" class="hx-pane"></div>
+      <div id="pane-ui"   class="hx-pane"></div>
+      <div id="pane-help" class="hx-pane"></div>
 
-        // hydrate modal
-        (() => {
-            byId("cb_webhook").checked = enableWebhook;
-            byId("cb_webhook_limit").checked = limitWebhookTrigger;
-            byId("in_webhook_iv").value = Math.max(1, Math.round(webhookTriggerInterval / 6e4));
-            byId("in_webhook_url").value = webhookUrl;
-            byId("cb_clock").checked = showClock;
-            byId("cb_countdown").checked = showRefreshCountdown;
-            byId("cb_dark").checked = darkMode;
-        })();
+      <div class="hx-actions">
+        <div><button id="hx-resetq" class="hx-btn hx-prim">Réinitialiser compteurs (file active)</button></div>
+        <div>
+          <button id="hx-close" class="hx-btn hx-badbtn">Fermer</button>
+          <button id="hx-save"  class="hx-btn hx-goodbtn">Enregistrer</button>
+        </div>
+      </div>
+    </div>`;
+  document.documentElement.appendChild(back); document.documentElement.appendChild(modal);
 
-        function openModal() {
-            modal.style.display = "grid";
-            updateLastValueDisplay();
-            applyThemePanel();
-        }
-        function closeModal() {
-            modal.style.display = "none";
-        }
-        function renderSchedules() {
-            const body = byId("sched_body");
-            if (!body) return;
-            body.innerHTML = "";
-            refreshSchedules.forEach((s, i) => {
-                const row = d.createElement("div");
-                row.className = "as-sched-row";
-                row.innerHTML = `<label><input type="checkbox" id="sc_en_${i}" class="as-toggle" ${s.enabled ? "checked" : ""}> Plage ${
-                    i + 1
-                }</label><span>de</span><input type="time" step="900" id="sc_start_${i}" class="as-input time" value="${s.start}"><span>à</span><input type="time" step="900" id="sc_end_${i}" class="as-input time" value="${
-                    s.end
-                }"><span>min</span><input type="number" id="sc_min_${i}" class="as-input mins" value="${s.min}" min="1"><span>max</span><input type="number" id="sc_max_${i}" class="as-input mins" value="${s.max}" min="1">`;
-                body.appendChild(row);
-            });
-        }
-        (() => {
-            const btnS = byId("btn_sched_toggle"),
-                bodyS = byId("sched_body");
-            let open = refreshSchedules.some((s) => s.enabled);
-            const sync = () => {
-                bodyS.classList.toggle("open", open);
-                btnS.textContent = open ? "Masquer" : "Afficher";
-            };
-            btnS.addEventListener("click", () => {
-                open = !open;
-                sync();
-            });
-            sync();
-            renderSchedules();
-            const btnA = byId("btn_avail_toggle"),
-                bodyA = byId("avail_body");
-            let o2 = !1;
-            const s2 = () => {
-                bodyA.classList.toggle("open", o2);
-                btnA.textContent = o2 ? "Masquer" : "Afficher";
-            };
-            btnA.addEventListener("click", () => {
-                o2 = !o2;
-                s2();
-                if (o2) updateAvailListInModal();
-            });
-            s2();
-        })();
-        function updateLastValueDisplay() {
-            const el = byId("lastValueDisplay"),
-                v = getLastValue(),
-                ts = new Date(getLastValueTime());
-            el.textContent = `Dernière valeur: ${v} — ${ts.toLocaleDateString()} ${ts.toLocaleTimeString()}`;
-        }
+  function collWrap(key, title, innerHTML, defaultOpen=false){
+    const k = `fold.${key}`;
+    const open = (settings.folds[k] ?? defaultOpen) ? 'open' : '';
+    return `
+      <div class="hx-coll ${open}" data-fold="${k}">
+        <div class="hx-coll-h"><span>${title}</span><span>${open?'▾':'▸'}</span></div>
+        <div class="hx-coll-b">${innerHTML}</div>
+      </div>
+    `;
+  }
+  function wireCollapsers(scopeRoot){
+    $$('.hx-coll', scopeRoot).forEach(c=>{
+      const k = c.getAttribute('data-fold');
+      c.querySelector('.hx-coll-h').addEventListener('click', ()=>{
+        c.classList.toggle('open');
+        settings.folds[k] = c.classList.contains('open');
+        setSettings(settings);
+        const h = c.querySelector('.hx-coll-h span:last-child'); if(h) h.textContent = c.classList.contains('open')?'▾':'▸';
+      });
+    });
+  }
 
-        byId("btn_close").addEventListener("click", closeModal);
-        byId("btn_save").addEventListener("click", () => {
-            enableWebhook = byId("cb_webhook").checked;
-            limitWebhookTrigger = byId("cb_webhook_limit").checked;
-            webhookTriggerInterval = Math.max(1, parseInt(byId("in_webhook_iv").value || "10", 10)) * 6e4;
-            webhookUrl = byId("in_webhook_url").value.trim();
-            showClock = byId("cb_clock").checked;
-            showRefreshCountdown = byId("cb_countdown").checked;
-            darkMode = byId("cb_dark").checked;
-            refreshSchedules = refreshSchedules.map((s, i) => ({
-                enabled: byId(`sc_en_${i}`).checked,
-                start: byId(`sc_start_${i}`).value || "00:00",
-                end: byId(`sc_end_${i}`).value || "00:00",
-                min: Math.max(1, parseInt(byId(`sc_min_${i}`).value, 10) || 1),
-                max: Math.max(1, parseInt(byId(`sc_max_${i}`).value, 10) || 1),
-            }));
-            GM_setValue("enableWebhook", enableWebhook);
-            GM_setValue("limitWebhookTrigger", limitWebhookTrigger);
-            GM_setValue("webhookTriggerInterval", webhookTriggerInterval);
-            GM_setValue("webhookUrl", webhookUrl);
-            GM_setValue("showClock", showClock);
-            GM_setValue("showRefreshCountdown", showRefreshCountdown);
-            GM_setValue("darkMode", darkMode);
-            GM_setValue("refreshSchedules", refreshSchedules);
-            clockBox.style.display = showClock ? "flex" : "none";
-            countdown.style.display = enableAutoRefresh && showRefreshCountdown ? "flex" : "none";
-            closeModal();
-        });
-        byId("btn_webhook_test").addEventListener("click", () => triggerWebhook({ event: "test", now: new Date().toISOString(), note: "test modale" }, !0));
-        byId("btn_webhook_clear").addEventListener("click", () => {
-            GM_setValue("webhookUrl", "");
-            byId("in_webhook_url").value = "";
-            alert("Webhook effacé");
-        });
-        byId("btn_purge_everseen").addEventListener("click", () => {
-            if (confirm("Purger la liste des ASIN connus (everSeen) ?")) purgeKnownASINs({ alsoResetSnapshot: !1 });
-        });
-        byId("btn_purge_everseen_snapshot").addEventListener("click", () => {
-            if (confirm("Purger ASIN connus + snapshot courant ?")) purgeKnownASINs({ alsoResetSnapshot: !0 });
-        });
+  function paneFor(queue){
+    const q=settings.queues[queue];
 
-        // ÉCHANGES
-        const getAvail = () => getLS(LS_AVAIL, {}) || {},
-            setAvail = (m) => setLS(LS_AVAIL, m || {}),
-            asinFromUrl = (u) => {
-                const m = u.match(/\/dp\/([A-Z0-9]{10})/i);
-                return m ? m[1].toUpperCase() : null;
-            },
-            cleanName = (s) =>
-                s
-                    .normalize("NFKD")
-                    .replace(/[\u0300-\u036f]/g, "")
-                    .replace(/\s+/g, " ")
-                    .trim()
-                    .slice(0, 72);
-        function updateAvailListInModal() {
-            const list = byId("avail_list");
-            if (!list) return;
-            list.innerHTML = "";
-            const map = getAvail(),
-                items = Object.values(map);
-            if (!items.length) {
-                const e = d.createElement("div");
-                e.className = "as-note";
-                e.textContent = 'Aucun produit marqué "Disponible".';
-                list.appendChild(e);
-                return;
-            }
-            items.forEach((p) => {
-                const row = d.createElement("div");
-                row.className = "as-list-item";
-                const a = d.createElement("a");
-                a.href = p.url;
-                a.target = "_blank";
-                a.textContent = p.name || p.url;
-                const b = d.createElement("button");
-                b.className = "as-btn close";
-                b.textContent = "Supprimer";
-                b.addEventListener("click", () => {
-                    const asin = asinFromUrl(p.url),
-                        m = getAvail();
-                    if (asin && m[asin]) {
-                        delete m[asin];
-                        setAvail(m);
-                    }
-                    if (location.pathname.startsWith("/vine/orders")) {
-                        $$(".vvp-orders-table--row").forEach((r) => {
-                            const L = r.querySelector(".a-link-normal");
-                            if (L && L.href === p.url) {
-                                r.style.backgroundColor = "";
-                                r.classList.remove("available");
-                            }
-                        });
-                    }
-                    updateAvailListInModal();
-                });
-                row.append(a, b);
-                list.appendChild(row);
-            });
-        }
-        function clearAvail() {
-            if (!confirm("Effacer toutes les disponibilités enregistrées ?")) return;
-            localStorage.removeItem(LS_AVAIL);
-            if (location.pathname.startsWith("/vine/orders")) {
-                $$(".vvp-orders-table--row").forEach((r) => {
-                    r.style.backgroundColor = "";
-                    r.classList.remove("available");
-                });
-            }
-            updateAvailListInModal();
-            alert('Données "Échanges" effacées.');
-        }
-        const ts = () => {
-            const x = new Date(),
-                z = (n) => String(n).padStart(2, "0");
-            return `${z(x.getDate())}-${z(x.getMonth() + 1)}-${x.getFullYear()} ${z(x.getHours())}-${z(x.getMinutes())}-${z(x.getSeconds())}`;
-        };
-        function exportPDF() {
-            const map = getAvail(),
-                arr = Object.values(map);
-            if (!arr.length) {
-                alert("Aucun produit disponible à exporter.");
-                return;
-            }
-            const { jsPDF } = w.jspdf,
-                doc = new jsPDF({ orientation: "landscape" });
-            let y = 20,
-                ph = doc.internal.pageSize.getHeight(),
-                m = 10,
-                c1 = m,
-                c2 = 160,
-                c3 = 210,
-                lh = 8;
-            doc.setFontSize(12);
-            doc.text("Produits Disponibles", c1, y);
-            y += 10;
-            doc.setFontSize(10);
-            doc.text("Nom du Produit", c1, y);
-            doc.text("Prix", c2, y);
-            doc.text("URL", c3, y);
-            y += 10;
-            arr.forEach((p) => {
-                if (y > ph - m) {
-                    doc.addPage();
-                    y = m;
-                }
-                doc.text(String(p.name || ""), c1, y);
-                doc.text(String(p.price || ""), c2, y);
-                doc.textWithLink(p.url, c3, y, { url: p.url, target: "_blank" });
-                y += lh;
-            });
-            if (y > ph - m) {
-                doc.addPage();
-                y = m;
-            }
-            doc.setFontSize(12);
-            doc.setFont("helvetica", "bold");
-            y += 10;
-            if (y > ph - m) {
-                doc.addPage();
-                y = m;
-            }
-            doc.text("SOUS RÉSERVE D'ÉCHANGE EN COURS OU D'ERREUR DE STOCK", m, y);
-            doc.save(`Liste de produits ${ts()}.pdf`);
-        }
-        byId("btn_export_pdf").addEventListener("click", exportPDF);
-        byId("btn_clear_avail").addEventListener("click", clearAvail);
+    const modeHTML = `
+      <div class="hx-grid">
+        <div><label class="hx-lab2">Mode</label>
+          <select class="hx-select" id="m-${queue}-mode">
+            <option value="diff"  ${q.mode==='diff'?'selected':''}>Diff (nouveaux ASIN)</option>
+            <option value="delta" ${q.mode==='delta'?'selected':''}>Delta (variation de total)</option>
+          </select></div>
+        <div><label class="hx-lab2">Seuil alerte (≥ delta)</label><input class="hx-input" id="m-${queue}-thr" type="number" min="1" value="${q.webhook.threshold}"></div>
+      </div>
+    `;
+    const autoHTML = `
+      <div class="hx-grid">
+        <div><label class="hx-lab2">Intervalle min (s)</label><input class="hx-input" id="m-${queue}-min" type="number" min="5" max="1800" value="${q.minSec}"></div>
+        <div><label class="hx-lab2">Intervalle max (s)</label><input class="hx-input" id="m-${queue}-max" type="number" min="5" max="1800" value="${q.maxSec}"></div>
+      </div>
+    `;
+    const hookHTML = `
+      <div class="hx-grid">
+        <div class="hx-full"><label class="hx-lab2">Webhook (URL unique)</label><input class="hx-input" id="m-${queue}-wh" type="text" value="${q.webhook.url||''}" placeholder="https://…"></div>
+        <div><label class="hx-lab2">Type de webhook</label>
+          <select class="hx-select" id="m-${queue}-modehook">
+            <option value="json" ${q.webhook.mode==='json'?'selected':''}>POST JSON (avancé)</option>
+            <option value="get"  ${q.webhook.mode==='get'?'selected':''}>GET simple (MacroDroid)</option>
+          </select></div>
+        <div><label class="hx-lab2">Cooldown (s)</label><input class="hx-input" id="m-${queue}-cd" type="number" min="0" value="${q.webhook.cooldownSec}"></div>
+        <div class="hx-full">
+          <button id="m-${queue}-test" class="hx-btn hx-goodbtn">Tester webhook</button>
+          <div class="hx-hr"></div>
+          <div class="hx-lab2">
+            MacroDroid (GET) : <code>?event=update&queue=...&total=...&diff=...&bn=...&rp=...&rm=...&tz=...&ts=...&page=...</code>
+          </div>
+        </div>
+      </div>
+    `;
+    const turboHTML = `
+      <div class="hx-grid">
+        <div><label class="hx-lab2">Turbo activé</label><select class="hx-select" id="m-${queue}-se"><option value="true" ${q.super.enabled?'selected':''}>Oui</option><option value="false" ${!q.super.enabled?'selected':''}>Non</option></select></div>
+        <div><label class="hx-lab2">Turbo: durée (s)</label><input class="hx-input" id="m-${queue}-sdur" type="number" min="10" max="3600" value="${q.super.durationSec}"></div>
+        <div><label class="hx-lab2">Turbo: min (s)</label><input class="hx-input" id="m-${queue}-smin" type="number" min="1" max="60" value="${q.super.minSec}"></div>
+        <div><label class="hx-lab2">Turbo: max (s)</label><input class="hx-input" id="m-${queue}-smax" type="number" min="1" max="60" value="${q.super.maxSec}"></div>
+      </div>
+    `;
+    const schHTML = `
+      ${q.schedules.slice(0,4).map((s,i)=>`
+        <div class="hx-grid" style="grid-template-columns:auto 120px auto 120px auto 100px auto 100px;align-items:center;margin-bottom:6px">
+          <div><label class="hx-lab2">Activer</label><input type="checkbox" id="m-${queue}-sch-en-${i}" ${s.enabled?'checked':''}></div>
+          <div><label class="hx-lab2">Début</label><input class="hx-input" id="m-${queue}-sch-start-${i}" type="time" step="900" value="${s.start}"></div>
+          <div><label class="hx-lab2">Fin</label><input class="hx-input" id="m-${queue}-sch-end-${i}" type="time" step="900" value="${s.end}"></div>
+          <div><label class="hx-lab2">Min (min)</label><input class="hx-input" id="m-${queue}-sch-min-${i}" type="number" min="1" max="60" value="${clamp(s.minMin,1,60)}"></div>
+          <div><label class="hx-lab2">Max (min)</label><input class="hx-input" id="m-${queue}-sch-max-${i}" type="number" min="1" max="60" value="${clamp(s.maxMin,1,60)}"></div>
+        </div>
+      `).join('')}
+      <div class="hx-lab2">Astuce : active/désactive les plages via l’icône 🗓️ (indépendant du bouton Activer).</div>
+    `;
 
-        // thème
-        function applyThemePanel() {
-            const p = $(".ashemka-panel");
-            if (!p) return;
-            p.classList.toggle("as-dark", !!darkMode);
-        }
+    return `
+      <div class="hx-h1">Paramètres ${QLABEL_FR[queue]}</div>
+      <div class="hx-hr"></div>
+      ${collWrap(`${queue}.mode`, 'Mode & seuil d’alerte', modeHTML, false)}
+      ${collWrap(`${queue}.auto`, 'Intervalle automatique', autoHTML, false)}
+      ${collWrap(`${queue}.hook`, 'Webhook & Cooldown', hookHTML, false)}
+      ${collWrap(`${queue}.turbo`, 'Turbo', turboHTML, false)}
+      ${collWrap(`${queue}.sch`, 'Plages horaires (1–60 min)', schHTML, false)}
+    `;
+  }
 
-        // icônes
-        const icoAlarm = icon("🔔", "Automatisation horloge (navigate aux minutes clés)", () => {
-            clockAutomationActive = !clockAutomationActive;
-            GM_setValue("clockAutomationActive", clockAutomationActive);
-            icoAlarm.classList.toggle("active", clockAutomationActive);
-            console.info("[Ashemka] Clock automation:", clockAutomationActive);
-        });
-        const icoRefresh = icon("🗘", "Auto-refresh Potluck selon plages", () => {
-            if (!isPotluckPage()) return;
-            enableAutoRefresh = !enableAutoRefresh;
-            GM_setValue("enableAutoRefresh", enableAutoRefresh);
-            icoRefresh.classList.toggle("active", enableAutoRefresh);
-            countdown.style.display = enableAutoRefresh && showRefreshCountdown ? "flex" : "none";
-            if (enableAutoRefresh) {
-                console.info("[Ashemka] scheduleRefresh()");
-                scheduleRefresh();
-            } else {
-                console.info("[Ashemka] Auto-refresh OFF");
-                clearTimeout(refreshTimeout);
-                nextRefreshTime = null;
-            }
-        });
-        const icoSettings = icon("⚙️", "Paramètres", openModal);
-        icons.append(icoAlarm, icoRefresh, icoSettings);
-        icoAlarm.classList.toggle("active", clockAutomationActive);
-        console.info("[Ashemka] Clock automation (rehydrated):", clockAutomationActive);
+  function paneHisto(){
+    const prodMap = h_getProdMap();
+    const events  = h_getEvents();
+    const filter  = (settings.history.filterType||'all');
+    const q       = (settings.history.search||'').trim().toLowerCase();
+    const showImg = !!settings.history.showImages;
 
-        // clock & countdown
-        function startClock() {
-            const tick = () => {
-                clockAutomationActive = GM_getValue("clockAutomationActive", clockAutomationActive);
-                const n = new Date(),
-                    hh = String(n.getHours()).padStart(2, "0"),
-                    mm = String(n.getMinutes()).padStart(2, "0"),
-                    ss = String(n.getSeconds()).padStart(2, "0");
-                clockBox.textContent = `${hh}:${mm}:${ss}`;
-                if (clockAutomationActive) {
-                    if ((mm === "59" && ss === "55") || (mm === "00" && ss === "00") || (mm === "23" && ss === "00")) {
-                        if (isPotluckPage()) {
-                            console.info("[Ashemka] Clock automation: reload");
-                            location.reload();
-                        } else if (autoLoadPotluck) {
-                            console.info("[Ashemka] Clock automation: goto Potluck");
-                            location.href = "https://www.amazon.fr/vine/vine-items?queue=potluck";
-                        }
-                    }
-                }
-            };
-            tick();
-            setInterval(tick, 1e3);
-        }
-        function startCountdown() {
-            const tick = () => {
-                if (!enableAutoRefresh || !showRefreshCountdown) {
-                    countdown.textContent = "";
-                    return;
-                }
-                if (!nextRefreshTime) {
-                    countdown.textContent = "Aucune plage active";
-                    return;
-                }
-                const left = nextRefreshTime - Date.now();
-                if (left <= 0) {
-                    countdown.textContent = "";
-                    return;
-                }
-                const m = String(Math.floor((left / 1e3 / 60) % 60)).padStart(2, "0"),
-                    s = String(Math.floor((left / 1e3) % 60)).padStart(2, "0");
-                countdown.textContent = `Prochain refresh: ${m}:${s}`;
-            };
-            tick();
-            setInterval(tick, 1e3);
-        }
-        clockBox.style.display = showClock ? "flex" : "none";
-        countdown.style.display = enableAutoRefresh && showRefreshCountdown ? "flex" : "none";
-        startClock();
-        startCountdown();
+    let list = [];
+    if (settings.history.groupView){
+      const arr = Object.values(prodMap).sort((a,b)=> new Date(b.last_ts)-new Date(a.last_ts));
+      list = arr.filter(it=>{
+        if(!q) return true;
+        return (it.name||'').toLowerCase().includes(q) || String(it.asin).toLowerCase().includes(q);
+      }).map(it=>{
+        const first = h_fmtTime(it.first_ts);
+        const last  = h_fmtTime(it.last_ts);
+        const price = it.price ? '<span class="hx-asin" style="margin-left:8px">'+it.price+'</span>' : '';
+        return (
+          '<div class="hx-hitem">'
+          + (showImg? '<img class="hx-thumb" data-hx-src="'+(it.img||'')+'" src="'+(it.img||'')+'" alt="">' : '<div></div>')
+          + '<div class="hx-meta">'
+            + '<div class="hx-line">'
+              + '<a class="hx-titlelink" href="'+it.url+'" target="_blank" rel="noreferrer">'+clip(it.name||'(Nom indisponible)')+'</a>'
+              + '<span class="hx-asin">'+first+'</span>'+price
+            + '</div>'
+            + '<div class="hx-sub">'
+              + '<span class="hx-badge hx-b-first">1re vue</span>'
+              + ((it.sightings>1)? '<span class="hx-badge hx-b-re">'+(it.sightings-1)+' réapparitions</span>' : '')
+              + '<span class="hx-badge hx-b-day" title="dernière">'+last+'</span>'
+            + '</div>'
+          + '</div>'
+          + '</div>'
+        );
+      });
+    } else {
+      let ev = events.slice();
+      if(filter==='first')   ev = ev.filter(e=>e.type==='first');
+      if(filter==='reappear')ev = ev.filter(e=>e.type==='reappear');
+      ev = ev.filter(e=>{
+        if(!q) return true;
+        return (e.name||'').toLowerCase().includes(q) || String(e.asin).toLowerCase().includes(q);
+      });
+      list = ev.map(e=>{
+        const p = prodMap[e.asin];
+        const first = p ? h_fmtTime(p.first_ts) : h_fmtTime(e.ts);
+        const when  = h_fmtTime(e.ts);
+        const price = e.price ? '<span class="hx-asin" style="margin-left:8px">'+e.price+'</span>' : '';
+        const bType = (e.type==='first')
+          ? '<span class="hx-badge hx-b-first">nouveau</span>'
+          : '<span class="hx-badge hx-b-re">réapparition</span><span class="hx-badge hx-b-day" title="réapparition">'+when+'</span>';
 
-        // Potluck by ASIN
-        function gridASINs() {
-            const grid = byId("vvp-items-grid");
-            if (!grid) {
-                console.warn("[Ashemka] #vvp-items-grid introuvable");
-                return [];
-            }
-            const items = $$(".vvp-item-tile"),
-                as = [];
-            items.forEach((el, i) => {
-                let a = null;
-                const A = el.querySelector('a[href*="/dp/"]');
-                if (A) {
-                    const h = A.getAttribute("href") || A.href || "",
-                        m = h.match(/\/dp\/([A-Z0-9]{10})/i);
-                    if (m) a = m[1].toUpperCase();
-                }
-                if (!a) {
-                    const d = el.querySelector("[data-asin]"),
-                        attr = d?.getAttribute("data-asin");
-                    if (attr && /^[A-Z0-9]{10}$/i.test(attr)) a = attr.toUpperCase();
-                }
-                if (!a) {
-                    const t = el.textContent || "",
-                        m2 = t.match(/\b(B0[0-9A-Z]{8})\b/i);
-                    if (m2) a = m2[1].toUpperCase();
-                }
-                if (a) as.push(a);
-                else console.debug("[Ashemka] ASIN non trouvé index", i, el);
-            });
-            const u = [...new Set(as)];
-            console.groupCollapsed("[Ashemka] getGridASINs()");
-            console.info("Items:", items.length, "ASINs uniques:", u.length);
-            u.length && console.table(u.map((x) => ({ ASIN: x })));
-            console.groupEnd();
-            return u;
-        }
-        const jget = (k, f) => getLS(k, f),
-            getLastASINs = () => jget(LS_LAST_ASINS, []),
-            setLastASINs = (a) => setLS(LS_LAST_ASINS, [...new Set(a)]),
-            getEverSeenSet = () => new Set(jget(LS_EVER_SEEN, [])),
-            setEverSeenASINs = (a) => setLS(LS_EVER_SEEN, [...new Set(a)]),
-            getFlapTimes = () => jget(LS_FLAP_TIMES, {}),
-            setFlapTimes = (m) => setLS(LS_FLAP_TIMES, m),
-            allowedChange = (a, t) => {
-                const m = getFlapTimes(),
-                    L = m[a] ? new Date(m[a]).getTime() : 0;
-                return t - L >= FLAP_TTL_MS;
-            },
-            markChanged = (arr, t) => {
-                const m = getFlapTimes();
-                arr.forEach((a) => (m[a] = new Date(t).toISOString()));
-                setFlapTimes(m);
-            },
-            getLastValue = () => parseInt(localStorage.getItem(LS_LAST_VALUE) || "0", 10),
-            getLastValueTime = () => localStorage.getItem(LS_LAST_VALUE_TIME) || new Date().toISOString(),
-            setLastValue = (v) => {
-                const old = getLastValue(),
-                    diff = v - old;
-                localStorage.setItem(LS_LAST_VALUE, String(v));
-                localStorage.setItem(LS_LAST_VALUE_TIME, new Date().toISOString());
-                updateLastValueDisplay();
-                logChange(v, diff);
-            },
-            logChange = (value, diff) => {
-                const logs = getLS(LS_CHANGE_LOG, []),
-                    now = new Date(),
-                    e = { date: now.toLocaleDateString(), time: now.toLocaleTimeString(), value, diff };
-                if (value === 0) {
-                    const l = localStorage.getItem(LS_LAST_ZERO_TIME);
-                    if (l && now - new Date(l) < 36e5) return;
-                    localStorage.setItem(LS_LAST_ZERO_TIME, now.toISOString());
-                }
-                logs.push(e);
-                setLS(LS_CHANGE_LOG, logs);
-            };
-        function triggerWebhook(payload, isTest = !1) {
-            if (!webhookUrl) {
-                alert("Attention, aucun webhook saisi !");
-                return;
-            }
-            const now = new Date(),
-                last = new Date(GM_getValue(webhookLastTriggeredKey, 0));
-            if (limitWebhookTrigger && !isTest && now - last < webhookTriggerInterval) {
-                console.info("[Ashemka] Webhook ignoré (limite)");
-                return;
-            }
-            console.groupCollapsed("[Ashemka] Webhook POST");
-            console.info("URL:", webhookUrl);
-            console.info("Payload:", payload);
-            console.groupEnd();
-            GM_xmlhttpRequest({
-                method: "POST",
-                url: webhookUrl,
-                headers: { "Content-Type": "application/json" },
-                data: JSON.stringify(payload),
-                timeout: 1e4,
-                onload: () => console.info("[Ashemka] Webhook OK"),
-                onerror: (e) => console.warn("[Ashemka] Webhook erreur", e),
-                ontimeout: () => console.warn("[Ashemka] Webhook timeout"),
-            });
-            GM_setValue(webhookLastTriggeredKey, now.toISOString());
-        }
-        function checkValue() {
-            if (!isPotluckPage()) return;
-            const cur = gridASINs().sort(),
-                prev = getLastASINs().sort(),
-                S = new Set(cur),
-                P = new Set(prev),
-                added = cur.filter((a) => !P.has(a)),
-                removed = prev.filter((a) => !S.has(a));
-            console.groupCollapsed("[Ashemka] checkValue() Δ");
-            console.info("previous:", prev.length, "current:", cur.length);
-            added.length && console.info("ADDED:", added.length), added.length && console.table(added.map((a) => ({ ASIN: a })));
-            removed.length && console.info("REMOVED:", removed.length), removed.length && console.table(removed.map((a) => ({ ASIN: a })));
-            console.groupEnd();
-            setLastValue(cur.length);
-            const ever = getEverSeenSet(),
-                brandNew = added.filter((a) => !ever.has(a)),
-                reap = added.filter((a) => ever.has(a));
-            setEverSeenASINs([...ever, ...cur]);
-            setLastASINs(cur);
-            const now = Date.now(),
-                bn = brandNew.filter((a) => allowedChange(a, now)),
-                rp = reap.filter((a) => allowedChange(a, now)),
-                rm = removed.filter((a) => allowedChange(a, now));
-            markChanged([...bn, ...rp, ...rm], now);
-            if (enableWebhook && (bn.length || rp.length))
-                triggerWebhook({
-                    event: "potluck_update",
-                    page: location.href,
-                    tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
-                    timestamp: new Date().toISOString(),
-                    total: cur.length,
-                    diff: cur.length - prev.length,
-                    brand_new_asins: bn,
-                    reappeared_asins: rp,
-                    removed_asins: rm,
-                });
-        }
-        function observePotluckGrid() {
-            const grid = byId("vvp-items-grid");
-            if (!grid) {
-                console.warn("[Ashemka] observePotluckGrid: grid introuvable");
-                return;
-            }
-            const mo = new MutationObserver(() => {
-                clearTimeout(grid.__asdebounce);
-                grid.__asdebounce = setTimeout(checkValue, 150);
-            });
-            mo.observe(grid, { childList: !0, subtree: !0 });
-            console.info("[Ashemka] MutationObserver actif sur #vvp-items-grid");
-        }
+        return (
+          '<div class="hx-hitem">'
+          + (showImg? '<img class="hx-thumb" data-hx-src="'+(e.img||'')+'" src="'+(e.img||'')+'" alt="">' : '<div></div>')
+          + '<div class="hx-meta">'
+            + '<div class="hx-line">'
+              + '<a class="hx-titlelink" href="'+e.url+'" target="_blank" rel="noreferrer">'+clip(e.name||'(Nom indisponible)')+'</a>'
+              + '<span class="hx-asin">'+first+'</span>'+price
+            + '</div>'
+            + '<div class="hx-sub">'+ bType +'</div>'
+          + '</div>'
+          + '</div>'
+        );
+      });
+    }
 
-        // auto-refresh
-        function refreshInterval() {
-            const now = new Date(),
-                m = now.getHours() * 60 + now.getMinutes();
-            for (const s of refreshSchedules) {
-                if (!s.enabled) continue;
-                const [sh, sm] = s.start.split(":").map(Number),
-                    [eh, em] = s.end.split(":").map(Number),
-                    S = sh * 60 + sm,
-                    E = eh * 60 + em;
-                if (m >= S && m < E) {
-                    const a = s.min * 6e4,
-                        b = s.max * 6e4,
-                        v = Math.floor(Math.random() * (b - a + 1)) + a;
-                    console.info("[Ashemka] Plage active", s.start, "→", s.end, "→", Math.round(v / 1e3), "s");
-                    return v;
-                }
-            }
-            console.info("[Ashemka] Aucune plage active");
-            return null;
-        }
-        function scheduleRefresh() {
-            clearTimeout(refreshTimeout);
-            const it = refreshInterval();
-            if (it != null) {
-                nextRefreshTime = new Date(Date.now() + it);
-                console.info("[Ashemka] Prochain refresh à", nextRefreshTime.toLocaleTimeString());
-                refreshTimeout = setTimeout(() => location.reload(), it);
-            } else {
-                nextRefreshTime = null;
-                refreshTimeout = setTimeout(scheduleRefresh, 6e4);
-            }
-        }
+    const totalProd = Object.keys(prodMap).length;
+    const totalEv   = events.length;
 
-        // Orders: colonne Échange + boutons
-        function addExchangeHeader() {
-            const hr = $(".vvp-orders-table--heading-row");
-            if (!hr) return;
-            const th = d.createElement("th");
-            th.innerText = "Échange";
-            th.className = "vvp-orders-table--text-col vvp-text-align-right";
-            const i = Math.min(4, hr.children.length);
-            hr.insertBefore(th, hr.children[i] || null);
+    return (
+      '<div class="hx-h1">Historique Recommandations (potluck)</div>'
+      + '<div class="hx-hr"></div>'
+      + '<div class="hx-controls">'
+        + '<select id="hx-h-filter" class="hx-input" style="max-width:200px">'
+          + '<option value="all" '+(settings.history.filterType==='all'?'selected':'')+'>Tous les événements</option>'
+          + '<option value="first" '+(settings.history.filterType==='first'?'selected':'')+'>Nouveaux (first)</option>'
+          + '<option value="reappear" '+(settings.history.filterType==='reappear'?'selected':'')+'>Réapparitions</option>'
+        + '</select>'
+        + '<select id="hx-h-view" class="hx-input" style="max-width:220px">'
+          + '<option value="events" '+(!settings.history.groupView?'selected':'')+'>Vue événements ('+totalEv+')</option>'
+          + '<option value="group"  '+(settings.history.groupView?'selected':'')+'>Vue groupée ('+totalProd+')</option>'
+        + '</select>'
+        + '<select id="hx-h-img" class="hx-input" style="max-width:160px">'
+          + '<option value="true" '+(settings.history.showImages?'selected':'')+'>Images ON</option>'
+          + '<option value="false" '+(!settings.history.showImages?'selected':'')+'>Images OFF</option>'
+        + '</select>'
+        + '<select id="hx-h-re" class="hx-input" style="max-width:190px">'
+          + '<option value="true" '+(settings.history.enableReappear?'selected':'')+'>Réapparitions ON</option>'
+          + '<option value="false" '+(!settings.history.enableReappear?'selected':'')+'>Réapparitions OFF</option>'
+        + '</select>'
+        + '<input id="hx-h-q" class="hx-input" type="text" placeholder="Rechercher (nom/ASIN)" value="'+(settings.history.search||'')+'" style="flex:1;min-width:180px">'
+      + '</div>'
+
+      + '<div class="hx-controls">'
+        + '<button id="hx-h-export" class="hx-btn-chip hx-btn-blue">Exporter CSV</button>'
+        + '<button id="hx-h-export-json" class="hx-btn-chip hx-btn-gray">Exporter JSON</button>'
+        + '<button id="hx-h-clear"  class="hx-btn-chip hx-btn-red">Vider l’historique</button>'
+        + '<button id="hx-hseed"    class="hx-btn-chip hx-btn-amber">Tester détection (ajouter la page)</button>'
+      + '</div>'
+
+      + '<div class="hx-hlist">'+ (list.join('') || '<div class="hx-lab2" style="padding:8px">Aucune entrée à afficher.</div>') +'</div>'
+    );
+  }
+
+  function paneUI(){
+    const accentOptions = Object.keys(ACCENTS).map(k=>`<option value="${k}" ${settings.accent===k?'selected':''}>${k[0].toUpperCase()+k.slice(1)}</option>`).join('');
+    const uiHTML = `
+      <div class="hx-grid">
+        <div><label class="hx-lab2">Thème</label>
+          <select id="m-ui-theme" class="hx-select">
+            <option value="system" ${settings.theme==='system'?'selected':''}>Système</option>
+            <option value="clair"  ${settings.theme==='clair'?'selected':''}>Clair</option>
+            <option value="sombre" ${settings.theme==='sombre'?'selected':''}>Sombre</option>
+            <option value="gris"   ${settings.theme==='gris'?'selected':''}>Gris</option>
+          </select></div>
+        <div><label class="hx-lab2">Accent</label>
+          <select id="m-ui-accent" class="hx-select">${accentOptions}</select></div>
+        <div><label class="hx-lab2">Afficher l’horloge (carte)</label><select id="m-ui-clock" class="hx-select"><option value="true" ${settings.showClock?'selected':''}>Oui</option><option value="false" ${!settings.showClock?'selected':''}>Non</option></select></div>
+        <div><label class="hx-lab2">Afficher le décompte</label><select id="m-ui-count" class="hx-select"><option value="true" ${settings.showCountdown?'selected':''}>Oui</option><option value="false" ${!settings.showCountdown?'selected':''}>Non</option></select></div>
+        <div><label class="hx-lab2">“Articles pour les testeurs” →</label>
+          <select id="m-ui-landing" class="hx-select">
+            <option value="potluck" ${settings.defaultLanding==='potluck'?'selected':''}>Recommandations</option>
+            <option value="last_chance" ${settings.defaultLanding==='last_chance'?'selected':''}>Dispo pour tous</option>
+            <option value="encore" ${settings.defaultLanding==='encore'?'selected':''}>Autres articles</option>
+          </select>
+        </div>
+      </div>
+      <div class="hx-hr"></div>
+      <div class="hx-lab2">Note : “Reco horaire” (⏰) et “Plages” (🗓️) se pilotent uniquement via les icônes — pas d’option dans la modale.</div>
+    `;
+    return `
+      <div class="hx-h1">Options globales</div>
+      <div class="hx-hr"></div>
+      ${collWrap('ui.base', 'Affichage & comportement', uiHTML, false)}
+    `;
+  }
+
+  function paneHelp(){
+    const helpIntro =
+      '<p>Bienvenue dans <b>Hex Vine Fusion</b>. Script unifié (Diff + Delta) avec UI compact, Turbo, <i>Plages</i> & <i>Reco horaire</i>, webhooks GET/POST, historique REC, et protections (anti-spam, circuit breaker, jitter, pause onglet, etc.).</p>'
+      + '<p>Chaque onglet est <b>indépendant</b> et chaque file possède ses réglages.</p>';
+
+    const helpModes =
+      '<div class="hx-grid">'
+      + '<div class="hx-full"><b>Files et modes</b></div>'
+      + '<div class="hx-full"><ul>'
+      + '<li><b>Recommandations</b> & <b>Dispo pour tous</b> : mode <i>Diff</i> (nouveaux/retours via ASIN).</li>'
+      + '<li><b>Autres articles</b> : mode <i>Delta</i> (variation du total visible).</li>'
+      + '</ul></div></div>';
+
+    const helpAutoTurbo =
+      '<div class="hx-grid">'
+      + '<div class="hx-full"><b>Rafraîchissement</b></div>'
+      + '<div><b>Activer</b> → planification aléatoire entre min/max (ou selon la plage active).</div>'
+      + '<div><b>Turbo</b> → intervalles courts (2–10 s par ex.) pendant X secondes.</div>'
+      + '<div class="hx-full"><b>Plages (🗓️)</b> → 4 créneaux en minutes, actifs même si “Activer” est OFF. Interrupteur global via l’icône.</div>'
+      + '<div class="hx-full"><b>Reco horaire (⏰)</b> → reload à HH:59:55 et HH:00:00, anti-double déclenchement.</div>'
+      + '</div>';
+
+    const helpWebhooks =
+      '<div class="hx-grid"><div class="hx-full"><b>Webhooks</b></div>'
+      + '<div class="hx-full"><p>Un webhook par file. Choisir GET (MacroDroid) ou POST JSON.</p>'
+      + '<p>GET params : <code>event, queue, total, diff, bn, rp, rm, tz, ts, page</code></p>'
+      + '<p>POST JSON (Diff) : <code>{event, queue, timestamp, page, tz, total, diff, brand_new_asins, reappeared_asins, removed_asins}</code></p>'
+      + '<p>POST JSON (Delta) : <code>{event, queue, timestamp, page, tz, total, diff}</code></p>'
+      + '<p>Cooldown + déduplication + circuit breaker intégrés.</p></div></div>';
+
+    const helpHistory =
+      '<div class="hx-grid"><div class="hx-full"><b>Historique REC</b></div>'
+      + '<div class="hx-full"><ul>'
+      + '<li>Enregistre 1re vue + réapparitions (cooldown 5 min).</li>'
+      + '<li>Vues: chronologique ou groupée par produit.</li>'
+      + '<li>Recherche, filtres, export CSV/JSON, purge, zoom image.</li>'
+      + '</ul></div></div>';
+
+    const helpTroubleshoot =
+      '<div class="hx-grid"><div class="hx-full"><b>Dépannage</b></div>'
+      + '<div class="hx-full"><ul>'
+      + '<li>Console (F12) : logs sous <i>[HexVine]</i>.</li>'
+      + '<li>Reset compteurs : bouton en bas de la modale.</li>'
+      + '<li>Limiter le bruit : cooldown ↑, plages ↑, reco horaire OFF.</li>'
+      + '</ul></div></div>';
+
+    return (
+      '<div class="hx-h1">Aide & FAQ</div>'
+      + '<div class="hx-hr"></div>'
+      + collWrap('help.intro', 'Présentation', helpIntro, true)
+      + collWrap('help.modes', 'Files, modes et détection', helpModes, false)
+      + collWrap('help.auto',  'Activer, Turbo, Plages, Reco horaire', helpAutoTurbo, false)
+      + collWrap('help.hk',    'Webhooks (GET / POST JSON)', helpWebhooks, false)
+      + collWrap('help.hist',  'Historique REC', helpHistory, false)
+      + collWrap('help.tr',    'Dépannage', helpTroubleshoot, false)
+    );
+  }
+
+  /* ───────────────────────── Lightbox image ───────────────────────── */
+  const ov=document.createElement('div'); ov.className='hx-ov'; ov.innerHTML=`<img alt="">`;
+  ov.addEventListener('click', ()=>{ ov.style.display='none'; ov.querySelector('img').src=''; });
+  document.documentElement.appendChild(ov);
+  function bindThumbZoom(scope){
+    $$('.hx-thumb', scope).forEach(img=>{
+      img.addEventListener('click', ()=>{
+        const src = img.getAttribute('data-hx-src') || img.getAttribute('src') || '';
+        if(!src) return;
+        ov.querySelector('img').src = src;
+        ov.style.display='flex';
+      });
+    });
+  }
+
+  /* ───────────────────────── Rendu & logique modale ───────────────────────── */
+  function renderModal(){
+    $('#pane-pot').innerHTML  = paneFor('potluck');
+    $('#pane-lc').innerHTML   = paneFor('last_chance');
+    $('#pane-enc').innerHTML  = paneFor('encore');
+    $('#pane-hist').innerHTML = paneHisto();
+    $('#pane-ui').innerHTML   = paneUI();
+    $('#pane-help').innerHTML = paneHelp();
+
+    const tabs=$$('.hx-tab',modal), panes=$$('.hx-pane',modal);
+    const activate=(id)=>{
+      tabs.forEach(t=>t.classList.toggle('active',t.dataset.pane===id));
+      panes.forEach(p=>p.classList.toggle('active',p.id===id));
+      settings.ui.activePane = id; setSettings(settings);
+      $('#hx-resetq').style.visibility = (id==='pane-hist') ? 'hidden' : 'visible';
+    };
+    tabs.forEach(t=>t.addEventListener('click',()=>activate(t.dataset.pane)));
+    const def = QUEUE==='potluck'?'pane-pot':QUEUE==='last_chance'?'pane-lc':'pane-enc';
+    activate(settings.ui.activePane || def);
+
+    wireCollapsers(modal);
+
+    // Handlers délégués — Enregistrer / Fermer / Reset / Test webhooks
+    modal.addEventListener('click', (e)=>{
+      const t = e.target; if(!t) return;
+
+      if (t.id === 'hx-save'){ e.preventDefault(); e.stopPropagation(); saveFromModal(); return; }
+      if (t.id === 'hx-close'){ e.preventDefault(); e.stopPropagation(); closeModal(); return; }
+      if (t.id === 'hx-resetq'){ e.preventDefault(); e.stopPropagation(); if(settings.ui.activePane!=='pane-hist') resetCounters(activePaneQueue()); return; }
+
+      if (t.id && /^m-(potluck|last_chance|encore)-test$/.test(t.id)){
+        e.preventDefault(); e.stopPropagation();
+        const [,queue] = t.id.match(/^m-(potluck|last_chance|encore)-test$/) || [];
+        if(queue){
+          (async ()=>{
+            const url = (document.getElementById(`m-${queue}-wh`)?.value||'').trim();
+            if(!url) { alert('Entrez une URL de webhook.'); return; }
+            setStatus(`Test ${queue}…`);
+            const mode = String(document.getElementById(`m-${queue}-modehook`)?.value||'get');
+            let ok=false;
+            if(mode==='json'){ ok = await httpPOST(url, {event:'test', queue, ts:new Date().toISOString()}, signHeaders({event:'test', queue})); }
+            else { ok = await httpGET(buildGet(url, {event:'test', queue, ts:new Date().toISOString()})); }
+            setStatus(ok?'Webhook OK':'Webhook KO');
+          })();
         }
-        function addExchangeButtons() {
-            const rows = $$(".vvp-orders-table--row");
-            let map = getAvail();
-            rows.forEach((row) => {
-                const nm = row.querySelector(".a-truncate-full, .a-truncate-cut"),
-                    pr = row.querySelector(".vvp-orders-table--text-col.vvp-text-align-right"),
-                    lk = row.querySelector(".a-link-normal");
-                if (!nm || !pr || !lk) return;
-                const td = d.createElement("td");
-                td.className = "vvp-orders-table--text-col vvp-text-align-right";
-                const btn = d.createElement("a");
-                btn.innerText = "Disponible";
-                btn.className = "a-button a-button-base";
-                btn.style.padding = "0 10px";
-                const url = lk.href,
-                    asin = asinFromUrl(url);
-                if (!asin) return;
-                const name = cleanName(nm.innerText.trim()),
-                    price = (pr.innerText || "").trim().replace(/[^\d,]/g, "");
-                if (map[asin]) {
-                    row.style.backgroundColor = "rgba(144,238,144,.3)";
-                    row.classList.add("available");
-                }
-                btn.addEventListener("click", () => {
-                    const on = row.classList.toggle("available"),
-                        m = getAvail();
-                    if (on) {
-                        m[asin] = { name, price, url };
-                        row.style.backgroundColor = "rgba(144,238,144,.3)";
-                    } else {
-                        delete m[asin];
-                        row.style.backgroundColor = "";
-                    }
-                    setAvail(m);
-                    updateAvailListInModal();
-                });
-                td.appendChild(btn);
-                const i = Math.min(4, row.children.length);
-                row.insertBefore(td, row.children[i] || null);
-            });
+        return;
+      }
+    });
+
+    // Historique — handlers
+    const keepHist=()=>{ settings.ui.activePane='pane-hist'; setSettings(settings); };
+    $('#hx-h-view')?.addEventListener('change', e=>{
+      settings.history.groupView = (e.target.value==='group'); setSettings(settings); keepHist(); renderModal();
+    });
+    $('#hx-h-img')?.addEventListener('change', e=>{
+      settings.history.showImages = (e.target.value==='true'); setSettings(settings); keepHist(); renderModal();
+    });
+    $('#hx-h-re')?.addEventListener('change', e=>{
+      settings.history.enableReappear = (e.target.value==='true'); setSettings(settings); keepHist(); renderModal();
+    });
+    $('#hx-h-filter')?.addEventListener('change', e=>{
+      settings.history.filterType = e.target.value; setSettings(settings); keepHist(); renderModal();
+    });
+    $('#hx-h-q')?.addEventListener('input', e=>{
+      settings.history.search = String(e.target.value||''); setSettings(settings);
+      $('#pane-hist').innerHTML = paneHisto(); bindThumbZoom($('#pane-hist'));
+    });
+    $('#hx-h-export')?.addEventListener('click', ()=>{
+      const group = !!settings.history.groupView;
+      let csv = '';
+      if(group){
+        csv += 'asin;name;url;first_ts;last_ts;sightings;img;price\n';
+        const arr = Object.values(h_getProdMap()).sort((a,b)=> new Date(b.last_ts)-new Date(a.last_ts));
+        arr.forEach(p=>{ csv += [p.asin, p.name, p.url, p.first_ts, p.last_ts, p.sightings, p.img, p.price].map(s=>('"'+String(s||'').replace(/"/g,'""')+'"')).join(';') + '\n'; });
+      } else {
+        csv += 'ts;type;asin;name;url;img;price\n';
+        h_getEvents().forEach(ev=>{ csv += [ev.ts, ev.type, ev.asin, ev.name, ev.url, ev.img, ev.price].map(s=>('"'+String(s||'').replace(/"/g,'""')+'"')).join(';') + '\n'; });
+      }
+      const blob = new Blob(["\ufeff"+csv], {type:'text/csv;charset=utf-8;'}); // BOM pour Excel
+      const a=document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = group ? 'hist_potluck_group.csv' : 'hist_potluck_events.csv'; document.body.appendChild(a); a.click(); a.remove();
+    });
+    $('#hx-h-export-json')?.addEventListener('click', ()=>{
+      const data = { products: h_getProdMap(), events: h_getEvents() };
+      const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
+      const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='hist_potluck.json'; document.body.appendChild(a); a.click(); a.remove();
+    });
+    $('#hx-h-clear')?.addEventListener('click', ()=>{
+      if(!confirm('Vider l’historique potluck (produits + événements) ?')) return;
+      h_setProdMap({}); h_setEvents([]); h_prevSet([]); keepHist(); renderModal();
+    });
+    $('#hx-hseed')?.addEventListener('click', ()=>{
+      if(QUEUE!=='potluck'){ alert('Ouvre “Recommandations” pour tester.'); return; }
+      const cur = extractASINs(); if(!cur.length){ alert('Aucun article détecté sur la page.'); return; }
+      h_recordPotluck(cur); keepHist(); renderModal();
+    });
+
+    // Zoom images
+    bindThumbZoom(modal);
+
+    // Accès rapide
+    $('#hx-close').onclick=closeModal;
+    $('#hx-resetq').onclick=()=>{ if(settings.ui.activePane==='pane-hist') return; resetCounters(activePaneQueue()); };
+  }
+
+  function openModal(){ renderModal(); back.style.display='block'; modal.style.display='block'; try{ modal.querySelector('.hx-select, .hx-input')?.focus(); }catch{} }
+  function closeModal(){ modal.style.display='none'; back.style.display='none'; }
+  function activePaneQueue(){ const id=settings.ui.activePane; return id==='pane-pot'?'potluck':id==='pane-lc'?'last_chance':id==='pane-enc'?'encore':QUEUE; }
+
+  function resetCounters(queue){
+    if(settings.queues[queue].mode==='diff'){
+      setLS(kq(queue,'lastAsins'), []);
+      setLS(kq(queue,'flapTimes'), {});
+    } else {
+      try{ sessionStorage.removeItem(kt('lastSeen')); sessionStorage.removeItem(kt('lastSeenAt')); }catch{}
+    }
+    setStatus(`Compteurs réinitialisés (${QLABEL_FR[queue]||queue})`);
+  }
+
+  function saveFromModal(){
+    try{
+      const Qs = ['potluck','last_chance','encore'];
+
+      Qs.forEach(queue=>{
+        const q = settings.queues[queue];
+
+        // Mode & seuil
+        q.mode = String(document.getElementById(`m-${queue}-mode`)?.value || q.mode);
+        q.webhook = q.webhook || {url:'',mode:'json',cooldownSec:2,threshold:1};
+        q.webhook.threshold   = Math.max(1, parseIntSafe(document.getElementById(`m-${queue}-thr`)?.value, q.webhook.threshold));
+
+        // Intervalles de base
+        q.minSec = clamp(parseIntSafe(document.getElementById(`m-${queue}-min`)?.value, q.minSec), 5, 1800);
+        q.maxSec = clamp(parseIntSafe(document.getElementById(`m-${queue}-max`)?.value, q.maxSec), 5, 1800);
+        if(q.minSec > q.maxSec) [q.minSec, q.maxSec] = [q.maxSec, q.minSec];
+
+        // Webhook unique (URL + mode + cooldown)
+        q.webhook.url  = String(document.getElementById(`m-${queue}-wh`)?.value || q.webhook.url).trim();
+        q.webhook.mode = String(document.getElementById(`m-${queue}-modehook`)?.value || q.webhook.mode);
+        q.webhook.cooldownSec = Math.max(0, parseIntSafe(document.getElementById(`m-${queue}-cd`)?.value, q.webhook.cooldownSec));
+
+        // Turbo
+        q.super.enabled     = String(document.getElementById(`m-${queue}-se`)?.value || String(!!q.super.enabled)) === 'true';
+        q.super.durationSec = clamp(parseIntSafe(document.getElementById(`m-${queue}-sdur`)?.value, q.super.durationSec), 10, 3600);
+        q.super.minSec      = clamp(parseIntSafe(document.getElementById(`m-${queue}-smin`)?.value, q.super.minSec), 1, 60);
+        q.super.maxSec      = clamp(parseIntSafe(document.getElementById(`m-${queue}-smax`)?.value, q.super.maxSec), 1, 60);
+        if(q.super.minSec > q.super.maxSec) [q.super.minSec, q.super.maxSec] = [q.super.maxSec, q.super.minSec];
+
+        // Plages (si présentes)
+        const sch = q.schedules || [];
+        const next = [];
+        for(let i=0;i<4;i++){
+          const enEl = document.getElementById(`m-${queue}-sch-en-${i}`);
+          if(!enEl) break;
+          next.push({
+            enabled: !!document.getElementById(`m-${queue}-sch-en-${i}`)?.checked,
+            start:   String(document.getElementById(`m-${queue}-sch-start-${i}`)?.value || sch[i]?.start || '00:00'),
+            end:     String(document.getElementById(`m-${queue}-sch-end-${i}`  )?.value || sch[i]?.end   || '23:59'),
+            minMin:  clamp(parseIntSafe(document.getElementById(`m-${queue}-sch-min-${i}`)?.value, sch[i]?.minMin ?? 10), 1, 60),
+            maxMin:  clamp(parseIntSafe(document.getElementById(`m-${queue}-sch-max-${i}`)?.value, sch[i]?.maxMin ?? 30), 1, 60),
+          });
         }
+        if(next.length) q.schedules = next;
+      });
 
-        // menus
-        if (typeof GM_registerMenuCommand !== "undefined") {
-            GM_registerMenuCommand("Ashemka — Ouvrir Paramètres", openModal);
-            GM_registerMenuCommand("Ashemka — Purger ASIN connus (everSeen)", () => purgeKnownASINs());
-            GM_registerMenuCommand("Ashemka — Purger ASIN connus + snapshot", () => purgeKnownASINs({ alsoResetSnapshot: !0 }));
-            GM_registerMenuCommand("Ashemka — Reset complet (prefs + LS)", () => {
-                if (confirm("Tout réinitialiser (GM + localStorage) ?")) {
-                    GM_listValues().forEach((k) => GM_deleteValue(k));
-                    localStorage.clear();
-                    location.reload();
-                }
-            });
-        }
+      // Onglet Options
+      const th = String(document.getElementById('m-ui-theme')?.value || settings.theme);
+      const ac = String(document.getElementById('m-ui-accent')?.value || settings.accent);
+      const sh = String(document.getElementById('m-ui-clock')?.value || String(!!settings.showClock));
+      const sc = String(document.getElementById('m-ui-count')?.value || String(!!settings.showCountdown));
+      const dl = String(document.getElementById('m-ui-landing')?.value || settings.defaultLanding);
 
-        // start
-        w.addEventListener("load", () => {
-            const potluckTab = $("li#vvp-vine-items-tab a");
-            if (potluckTab) potluckTab.href = "https://www.amazon.fr/vine/vine-items?queue=potluck";
-            if (isPotluckPage()) {
-                setTimeout(checkValue, 150);
-                observePotluckGrid();
-                icoRefresh.classList.toggle("active", enableAutoRefresh);
-                if (enableAutoRefresh) scheduleRefresh();
-            }
-            if (location.pathname.startsWith("/vine/orders")) {
-                addExchangeHeader();
-                addExchangeButtons();
-            }
-        });
+      settings.theme         = th;
+      settings.accent        = ac;
+      settings.showClock     = (sh === 'true');
+      settings.showCountdown = (sc === 'true');
+      settings.defaultLanding= dl;
 
-        // (Fix fusion) — on garde un seul binding pour ces boutons, déjà fait plus haut
-        // (Pas de doublon ici)
-    })();
+      setSettings(settings);
+      applyTheme();
+      updateUIStates();
+      scheduleNext();
+      setStatus('Options enregistrées');
+      closeModal();
+    }catch(err){
+      console.error('[HexVine] Save error', err);
+      alert('Erreur pendant la sauvegarde. Voir console pour les détails.');
+    }
+  }
 
+  /* ───────────────────────── Nav: Toggle UI + redirection ───────────────────────── */
+  function mountNavToggleTab(){
+    const ul = document.querySelector('ul.a-tabs.a-declarative[data-action="a-tabs"][data-a-tabs*="vine-voice-tabs"]');
+    if(!ul) return false;
+    if (ul.querySelector('#hx-nav-toggle-tab')) return true;
+
+    const li = document.createElement('li');
+    li.id='hx-nav-toggle-tab';
+    li.className='a-tab-heading';
+    li.setAttribute('role','presentation');
+    const a = document.createElement('a');
+    a.setAttribute('role','tab'); a.setAttribute('aria-selected','false'); a.setAttribute('tabindex','-1');
+    a.textContent = ssGet(kt('hidden'), false) ? 'Afficher l’UI' : 'Masquer l’UI';
+    a.href='javascript:void(0)';
+    a.addEventListener('click', ()=>{
+      const hidden = ssGet(kt('hidden'), false);
+      hidden ? showUI() : hideUI();
+      a.textContent = hidden ? 'Masquer l’UI' : 'Afficher l’UI';
+    }, {capture:true});
+    li.appendChild(a); ul.appendChild(li);
+
+    // redirection "Articles pour les testeurs"
+    const mainTab = ul.querySelector('#vvp-vine-items-tab a[href*="vine-items"]');
+    if(mainTab){
+      mainTab.addEventListener('click', (e)=>{
+        try{
+          e.preventDefault(); e.stopPropagation();
+          const target=settings.defaultLanding||'potluck';
+          location.assign(`/vine/vine-items?queue=${encodeURIComponent(target)}`);
+        }catch{}
+      }, {capture:true});
+    }
+    return true;
+  }
+  function ensureNavMounted(){
+    if (mountNavToggleTab()) return;
+    const mo = new MutationObserver(()=>{ if(mountNavToggleTab()) mo.disconnect(); });
+    mo.observe(document.body, {childList:true, subtree:true});
+  }
+  function hideUI(){ card.style.display='none'; ssSet(kt('hidden'),true); const t=document.querySelector('#hx-nav-toggle-tab a'); if(t) t.textContent='Afficher l’UI'; }
+  function showUI(){ card.style.display='';  ssSet(kt('hidden'),false); const t=document.querySelector('#hx-nav-toggle-tab a'); if(t) t.textContent='Masquer l’UI'; }
+
+  ensureNavMounted();
+
+  /* ───────────────────────── Events globaux ───────────────────────── */
+  document.getElementById('hx-ic-opt').addEventListener('click', openModal);
+  document.getElementById('hx-toggle').addEventListener('click', ()=>setAuto(!isAutoOn()));
+  document.getElementById('hx-super').addEventListener('click', ()=>{ isSuperOn()? stopSuper() : startSuper(); });
+  document.getElementById('hx-ic-gate').addEventListener('click', ()=>{
+    gateActive = !gateActive; ssSet(kt('gateActive'), gateActive);
+    updateHeaderIcons();
+  });
+  document.getElementById('hx-ic-sched').addEventListener('click', ()=>{
+    useSchedules = !useSchedules;
+    settings.queues[QUEUE].useSchedules = useSchedules; setSettings(settings);
+    updateHeaderIcons();
+    scheduleNext(); // planifie même si Auto OFF (si plage active)
+  });
+
+  if (typeof GM_registerMenuCommand==='function'){
+    GM_registerMenuCommand('Hex Vine Fusion — Options', openModal);
+    GM_registerMenuCommand('Hex Vine Fusion — ON/OFF', ()=>setAuto(!isAutoOn()));
+    GM_registerMenuCommand('Hex Vine Fusion — Reset compteurs (file courante)', ()=>resetCounters(QUEUE));
+    GM_registerMenuCommand('Hex Vine Fusion — Afficher/Masquer UI', ()=>{ const hidden=ssGet(kt('hidden'),false); hidden?showUI():hideUI(); });
+    GM_registerMenuCommand('Hex Vine Fusion — Debug logs ON/OFF', ()=>{
+      DEBUG = !DEBUG; GM_setValue('hexfuse.debug', DEBUG);
+      setStatus(`Debug ${DEBUG?'ON':'OFF'}`);
+    });
+  }
+  document.addEventListener('keydown',(e)=>{ if(modal.style.display==='block'){ if(e.key==='Escape') closeModal(); if(e.key==='Enter') document.getElementById('hx-save')?.click(); } });
+
+  /* ───────────────────────── INIT ───────────────────────── */
+  function bootstrap(){
+    updateUIStates();
+    setupObserver();
+    scheduleNext();
+    if (ssGet(kt('hidden'),false)) hideUI(); else showUI();
+  }
+  bootstrap();
+
+ })();
 // ——————————————————————————————————————————————————————————
 //  MODULE 2 : Vine Power Pack — v1.9.2 (+ Submit tracking, bouton vert, “Soumis”)
 // ——————————————————————————————————————————————————————————
@@ -2812,5 +3382,4 @@ window.addEventListener('keydown', onKeyDown, { passive: true });
             window.addEventListener("DOMContentLoaded", main, { once: true });
         }
     })(); // END VPP
-
 
