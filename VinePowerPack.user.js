@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vine Power Pack by Ashemka
 // @author       Ashemka
-// @version      4.1.2.2
+// @version      4.1.2.3
 // @description  Fusion : Potluck ASIN + Webhook + Auto-refresh + Échanges/Export PDF  •  +  •  Pro “Vine Reviews” (pending CS, modèles email, harvest, stats, ratio, jours restants, dark) (VPP)
 // @match        https://www.amazon.fr/vine/*
 // @match        https://www.amazon.fr/vine/vine-items?*
@@ -955,86 +955,116 @@ setInterval(()=>{
         h_prevSet(Array.from(cur));
     }
     async function onScan() {
-        const _histAsins = QUEUE === "potluck" ? extractASINs() : null;
-        let total,
-            delta = 0;
-        if (QT.mode === "diff") {
-            const asins = extractASINs();
-            const d = diffAsins(asins);
-            total = d.curCount;
-            delta = total - d.prevCount;
-            $("#hx-total").textContent = String(total);
-            renderDelta(delta);
-            setStatus(isAutoOn() ? "Observation active" : "Observation (auto OFF)");
-            const hasSig = d.brandNew.length || d.reappeared.length || d.removedFlap.length;
-            const url = QT.webhook.url;
-            if (hasSig && url && cooled("diff", QT.webhook.cooldownSec)) {
-                const payload = {
-                    event: "update",
-                    queue: QUEUE,
-                    page: location.href,
-                    tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
-                    timestamp: new Date().toISOString(),
-                    total,
-                    diff: delta,
-                    brand_new_asins: d.brandNew,
-                    reappeared_asins: d.reappeared,
-                    removed_asins: d.removedFlap,
-                };
-                const fp = hashSimple(payload);
-                if (dedup("diff", fp, 12000)) {
-                    await withCircuit("diff", async () => {
-                        if (QT.webhook.mode === "json") {
-                            return httpPOST(url, payload, signHeaders(payload));
-                        } else {
-                            const u = buildGet(url, {
-                                event: "update",
-                                queue: QUEUE,
-                                total: String(total),
-                                diff: String(delta),
-                                bn: d.brandNew.join(","),
-                                rp: d.reappeared.join(","),
-                                rm: d.removedFlap.join(","),
-                                tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
-                                ts: new Date().toISOString(),
-                                page: location.href,
-                            });
-                            return httpGET(u);
-                        }
-                    });
-                    setStatus("Alerte envoyée");
-                }
-            }
-        } else {
-            total = extractTotalEncore();
-            const last = ssGet(kt("lastSeen"), null);
-            delta = last == null ? 0 : total - Number(last);
-            $("#hx-total").textContent = String(total);
-            renderDelta(delta);
-            setStatus(isAutoOn() ? "Observation active" : "Observation (auto OFF)");
-            const thr = QT.webhook.threshold || 1;
-            const url = QT.webhook.url;
-            if ((isAutoOn() || activeSchedule()) && last != null && delta >= thr && url && cooled("delta", QT.webhook.cooldownSec)) {
-                const payload = { event: "update", queue: QUEUE, page: location.href, tz: Intl.DateTimeFormat().resolvedOptions().timeZone, timestamp: new Date().toISOString(), total, diff: delta };
-                const fp = `${QUEUE}:${total}`;
-                if (dedup("delta", fp, 8000)) {
-                    await withCircuit("delta", async () => {
-                        if (QT.webhook.mode === "json") {
-                            return httpPOST(url, payload, signHeaders(payload));
-                        } else {
-                            const u = buildGet(url, { event: "update", queue: QUEUE, total: String(total), diff: String(delta), tz: Intl.DateTimeFormat().resolvedOptions().timeZone, ts: new Date().toISOString(), page: location.href });
-                            return httpGET(u);
-                        }
-                    });
-                    setStatus("Alerte envoyée");
-                }
-            }
-            ssSet(kt("lastSeen"), total);
-            ssSet(kt("lastSeenAt"), nowMs());
-        }
-        if (QUEUE === "potluck" && _histAsins) h_recordPotluck(_histAsins);
-        updateNote();
+  const _histAsins = QUEUE === "potluck" ? extractASINs() : null;
+
+  let total, delta = 0;
+
+  if (QT.mode === "diff") {
+    // --- PAGES potluck / last_chance : on ne prévient QUE s'il y a de nouveaux ASIN ---
+    const asins = extractASINs();
+    const d = diffAsins(asins);
+    total = d.curCount;
+    delta = total - d.prevCount;
+
+    $("#hx-total").textContent = String(total);
+    renderDelta(delta);
+    setStatus(isAutoOn() ? "Observation active" : "Observation (auto OFF)");
+
+    const hasNew = Array.isArray(d.brandNew) && d.brandNew.length > 0;
+    const url = QT.webhook.url;
+
+    if (hasNew && url && cooled("diff", QT.webhook.cooldownSec)) {
+      // Payload centré sur les nouveautés (on n’envoie pas réapparitions/suppressions)
+      const payload = {
+        event: "update",
+        queue: QUEUE,
+        page: location.href,
+        tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        timestamp: new Date().toISOString(),
+        total,
+        diff: delta,
+        brand_new_asins: d.brandNew
+      };
+
+      // Dédup: uniquement basé sur les nouveaux ASIN et le total courant
+      const fp = hashSimple({ queue: QUEUE, brand_new_asins: d.brandNew, total });
+
+      if (dedup("diff-newonly", fp, 12000)) {
+        await withCircuit("diff-newonly", async () => {
+          if (QT.webhook.mode === "json") {
+            return httpPOST(url, payload, signHeaders(payload));
+          } else {
+            const u = buildGet(url, {
+              event: "update",
+              queue: QUEUE,
+              total: String(total),
+              diff: String(delta),
+              bn: d.brandNew.join(","), // uniquement les nouveaux
+              tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+              ts: new Date().toISOString(),
+              page: location.href
+            });
+            return httpGET(u);
+          }
+        });
+        setStatus("Alerte envoyée (nouveaux ASIN)");
+      }
     }
+
+  } else {
+    // --- PAGE encore : logique delta inchangée ---
+    total = extractTotalEncore();
+    const last = ssGet(kt("lastSeen"), null);
+    delta = last == null ? 0 : total - Number(last);
+
+    $("#hx-total").textContent = String(total);
+    renderDelta(delta);
+    setStatus(isAutoOn() ? "Observation active" : "Observation (auto OFF)");
+
+    const thr = QT.webhook.threshold || 1;
+    const url = QT.webhook.url;
+
+    if ((isAutoOn() || activeSchedule()) && last != null && delta >= thr && url && cooled("delta", QT.webhook.cooldownSec)) {
+      const payload = {
+        event: "update",
+        queue: QUEUE,
+        page: location.href,
+        tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        timestamp: new Date().toISOString(),
+        total,
+        diff: delta
+      };
+      const fp = `${QUEUE}:${total}`;
+
+      if (dedup("delta", fp, 8000)) {
+        await withCircuit("delta", async () => {
+          if (QT.webhook.mode === "json") {
+            return httpPOST(url, payload, signHeaders(payload));
+          } else {
+            const u = buildGet(url, {
+              event: "update",
+              queue: QUEUE,
+              total: String(total),
+              diff: String(delta),
+              tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+              ts: new Date().toISOString(),
+              page: location.href
+            });
+            return httpGET(u);
+          }
+        });
+        setStatus("Alerte envoyée");
+      }
+    }
+
+    ssSet(kt("lastSeen"), total);
+    ssSet(kt("lastSeenAt"), nowMs());
+  }
+
+  if (QUEUE === "potluck" && _histAsins) h_recordPotluck(_histAsins);
+  updateNote();
+}
+
     function renderDelta(delta) {
         const el = $("#hx-delta");
         el.classList.remove("hx-pos", "hx-neg", "hx-zero");
